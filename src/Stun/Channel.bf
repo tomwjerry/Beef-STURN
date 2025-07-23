@@ -50,88 +50,49 @@ struct ChannelData
             return .Err(StunError.InvalidInput);
         }
 
-        if (!(uint8[3](1, 2, 3)).Contains(bytes[0] >> 6))
+        if (!(uint8[2](1, 2)).Contains(bytes[0] >> 6))
         {
             return .Err(StunError.InvalidInput);
         }
 
-        int size = (u16::from_be_bytes(bytes[2..4].try_into()?) + 4) as usize;
-        if is_tcp && (size % 4) > 0 {
+        uint64 size = BitConverter.Convert<uint8[2], uint16>(uint8[2](bytes[2], bytes[3])) + 4;
+        if (is_tcp && (size % 4) > 0)
+        {
             size += 4 - (size % 4);
         }
 
-        Ok(size)
+        return .Ok(size);
     }
 
-    /// # Test
-    ///
-    /// ```
-    /// use bytes::{BufMut, BytesMut};
-    /// use std::convert::TryFrom;
-    /// use turn_server::stun::*;
-    ///
-    /// let data: [u8; 4] = [0x40, 0x00, 0x00, 0x40];
-    /// let mut bytes = BytesMut::with_capacity(1500);
-    ///
-    /// ChannelData {
-    ///     number: 16384,
-    ///     bytes: &data[..],
-    /// }
-    /// .encode(&mut bytes);
-    ///
-    /// let ret = ChannelData::try_from(&bytes[..]).unwrap();
-    /// assert_eq!(ret.number, 16384);
-    /// assert_eq!(ret.bytes, &data[..]);
-    /// ```
-    pub fn encode(self, bytes: &mut BytesMut) {
-        unsafe { bytes.set_len(0) }
-        bytes.put_u16(self.number);
-        bytes.put_u16(self.bytes.len() as u16);
-        bytes.extend_from_slice(self.bytes);
+    public void encode(List<uint8> obytes)
+    {
+        obytes.Clear();
+        obytes.Add((uint8)(number >> 8));
+        obytes.Add((uint8)(number & 0xFF));
+        obytes.Add((uint8)(bytes.Length >> 8));
+        obytes.Add((uint8)(bytes.Length & 0xFF));
+        obytes.AddRange(bytes);
     }
-}
 
-impl<'a> TryFrom<&'a [u8]> for ChannelData<'a> {
-    type Error = StunError;
-
-    /// # Test
-    ///
-    /// ```
-    /// use bytes::{BufMut, BytesMut};
-    /// use std::convert::TryFrom;
-    /// use turn_server::stun::*;
-    ///
-    /// let data: [u8; 4] = [0x40, 0x00, 0x00, 0x40];
-    /// let mut bytes = BytesMut::with_capacity(1500);
-    ///
-    /// ChannelData {
-    ///     number: 16384,
-    ///     bytes: &data[..],
-    /// }
-    /// .encode(&mut bytes);
-    ///
-    /// let ret = ChannelData::try_from(&bytes[..]).unwrap();
-    /// assert_eq!(ret.number, 16384);
-    /// assert_eq!(ret.bytes, &data[..]);
-    /// ```
-    fn try_from(bytes: &'a [u8]) -> Result<Self, Self::Error> {
-        if bytes.len() < 4 {
-            return Err(StunError::InvalidInput);
+    public Result<ChannelData, StunError> TryFrom(Span<uint8> bytes)
+    {
+        if (bytes.Length < 4)
+        {
+            return .Err(StunError.InvalidInput);
         }
 
-        let number = u16::from_be_bytes(bytes[..2].try_into()?);
-        if !(0x4000..0xFFFF).contains(&number) {
-            return Err(StunError::InvalidInput);
+        if (!(uint8[2](1, 2)).Contains(bytes[0] >> 6))
+        {
+            return .Err(StunError.InvalidInput);
         }
 
-        let size = u16::from_be_bytes(bytes[2..4].try_into()?) as usize;
-        if size > bytes.len() - 4 {
-            return Err(StunError::InvalidInput);
-        }
+        uint16 number = BitConverter.Convert<uint8[2], uint16>(uint8[2](bytes[0], bytes[1]));
+        uint16 length = BitConverter.Convert<uint8[2], uint16>(uint8[2](bytes[2], bytes[3]));
 
-        Ok(Self {
-            bytes: &bytes[4..],
-            number,
-        })
+        return .Ok(ChannelData
+        {
+            number = number,
+            bytes = bytes.Slice(4, length)
+        });
     }
 }
