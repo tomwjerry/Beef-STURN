@@ -1,5 +1,5 @@
 FileVersion = 1
-Projects = {BeefSturn = {Path = "."}}
+Projects = {BeefSturn = {Path = "."}, Beef-Net = {Path = "../Beef-Net"}, Beef-OpenSSL = {Path = "../Beef-Net/Beef-OpenSSL"}}
 
 [Workspace]
 StartupProject = "BeefSturn"

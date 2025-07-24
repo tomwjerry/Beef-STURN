@@ -50,7 +50,7 @@ using System.Diagnostics;
 //! in the form of new methods, attributes, or error response codes.
 //! More information on STUN Usages can be found in [Section 13].
 
-enum StunError
+enum StunError : STError
 {
     case InvalidInput;
     case SummaryFailed;

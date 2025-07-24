@@ -1,5 +1,7 @@
 FileVersion = 1
+Dependencies = {corlib = "*", Beef-Net = "*"}
 
 [Project]
 Name = "BeefSturn"
+TargetType = "BeefLib"
 StartupObject = "BeefSturn.Program"
