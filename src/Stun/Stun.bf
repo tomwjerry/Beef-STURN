@@ -144,7 +144,7 @@ class Method
             }
         }
 
-        public Result<StunMethod> TryFrom(uint16 fromval)
+        public static Result<StunMethod> TryFrom(uint16 fromval)
         {
             switch (fromval)
             {
@@ -240,11 +240,11 @@ enum Payload
 /// A cache of the list of attributes, this is for internal use only.
 struct Attributes : IDisposable
 {
-    public List<(AttrKind, Span<uint64>)> attrList;
+    public List<(AttrKind, uint64[2])> attrList;
 
     public this()
     {
-        attrList = new List<(AttrKind, Span<uint64>)>(20);
+        attrList = new List<(AttrKind, uint64[2])>(20);
     }
 
     public void Dispose()
@@ -253,7 +253,7 @@ struct Attributes : IDisposable
     }
 
     /// Adds an attribute to the list.
-    public void aAppend(AttrKind kind, Span<uint64> range)
+    public void aAppend(AttrKind kind, uint64[2] range)
     {
         attrList.Add((kind, range));
     }
@@ -262,29 +262,29 @@ struct Attributes : IDisposable
     ///
     /// Note: This function will only look for the first matching property in
     /// the list and return it.
-    public Span<uint64> get(AttrKind kind)
+    public uint64[2] get(AttrKind kind)
     {
-        int idx = attrList.FindIndex(scope(cmp) => cmp[0] == kind);
+        int idx = attrList.FindIndex(scope(cmp) => cmp.0 == kind);
         if (idx > -1)
         {
-            return attrList[idx][1];
+            return attrList[idx].1;
         }
 
-        return Span<uint64>();
+        return uint64[2] ( 0, 0 );
     }
 
     /// Gets all the values of an attribute from a list.
     ///
     /// Normally a stun message can have multiple attributes with the same name,
     /// and this function will all the values of the current attribute.
-    public Span<Span<uint64>>.Enumerator get_all(AttrKind kind)
+    public Span<uint64[2]>.Enumerator get_all(AttrKind kind)
     {
-        List<Span<uint64>> filteredAttrs = scope List<Span<uint64>>();
+        List<uint64[2]> filteredAttrs = scope List<uint64[2]>();
         for (let li in attrList)
         {
-            if (li[0] == kind)
+            if (li.0 == kind)
             {
-                filteredAttrs.Add(li[1]);
+                filteredAttrs.Add(li.1);
             }
         }
 
@@ -314,17 +314,14 @@ struct Decoder
         if (flag == 0)
         {
             attrs.clear();
-
-            MessageRef msg;
-            if (msg = MessageDecoder.decode(bytes, ref attrs))
+            if (MessageDecoder.decode(bytes, attrs) case .Ok(let msg))
             {
-                return .Ok(Payload.Message());
+                return .Ok(Payload.Message(msg));
             }
         }
         else
         {
-            ChannelData chanData;
-            if (chanData = ChannelData.try_from(bytes))
+            if (ChannelData.TryFrom(bytes) case .Ok(let chanData))
             {
                 return .Ok(Payload.ChannelData(chanData));
             }

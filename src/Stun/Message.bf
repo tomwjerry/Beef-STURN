@@ -31,47 +31,50 @@ class MessageEncoder
         token = ttoken;
     }    
 
-    public this(Method.StunMethod method, uint8[12] ttoken, Span<uint8> tbytes)
+    public this(Method.StunMethod method, uint8[12] ttoken, List<uint8> tbytes)
     {
-        List<uint8> tmpBytes = scope List<uint8>();
+        tbytes.Clear();
 
         uint16 methodNum = method.Into();
-        tmpBytes.Add((uint8)(methodNum >> 8));
-        tmpBytes.Add((uint8)(methodNum & 0xFF));
-        tmpBytes.Add(0);
-        tmpBytes.Add(0);
-        tmpBytes.AddRange(COOKIE);
-        tmpBytes.AddRange(ttoken);
+        tbytes.Add((uint8)(methodNum >> 8));
+        tbytes.Add((uint8)(methodNum & 0xFF));
+        tbytes.Add(0);
+        tbytes.Add(0);
+        tbytes.AddRange(COOKIE);
+        tbytes.AddRange(ttoken);
 
-        this(tmpBytes, tbytes);
+        bytes = new List<uint8>(tbytes);
+        token = ttoken;
     }
 
-    public void Dispose()
+    public ~this()
     {
         delete bytes;
     }
 
     /// rely on old message to create new message.
-    public void extend(Method.StunMethod method, MessageRef reader, Span<uint8> nbytes) mut
+    public void extend(Method.StunMethod method, MessageRef reader, List<uint8> nbytes, MessageEncoder newMsg)
     {
         Span<uint8> ttoken = reader.token();
 
-        bytes.Clear();
+        nbytes.Clear();
         uint16 methodNum = method.Into();
-        bytes.Add((uint8)(methodNum >> 8));
-        bytes.Add((uint8)(methodNum & 0xFF));
-        bytes.Add(0);
-        bytes.Add(0);
-        bytes.AddRange(COOKIE);
-        bytes.AddRange(ttoken);
+        nbytes.Add((uint8)(methodNum >> 8));
+        nbytes.Add((uint8)(methodNum & 0xFF));
+        nbytes.Add(0);
+        nbytes.Add(0);
+        nbytes.AddRange(COOKIE);
+        nbytes.AddRange(ttoken);
 
-        token = ttoken;
+        newMsg.bytes.Clear();
+        nbytes.CopyTo(newMsg.bytes);
+        newMsg.token = ttoken;
     }
 
     /// append attribute.
     ///
     /// append attribute to message attribute list.
-    public void appendAttr<T>(T theval) where T : Encodable
+    public void appendAttr<T>(T theval) where T : STAttribute
     {
         uint16 pootVal = BitConverter.Convert<T, uint16>(theval);
         bytes.Add((uint8)(pootVal >> 8));
@@ -92,7 +95,7 @@ class MessageEncoder
 
         // if you need to padding,
         // padding in the zero bytes.
-        let psize = pad_size(size);
+        int psize = (int)pad_size((uint64)size);
         if (psize > 0)
         {
             for (int i = 0; i < psize; i++)
@@ -106,7 +109,7 @@ class MessageEncoder
     public Result<void, StunError> flush(Digest? digest)
     {
         // write attribute list size.
-        set_len(bytes.Count - 20);
+        set_len((uint64)bytes.Count - 20);
 
         // if need message integrity?
         if (digest.TryGetValue(var a))
@@ -122,307 +125,355 @@ class MessageEncoder
     /// add the `MessageIntegrity` attribute to the stun message
     /// and serialize the message into a buffer.
     ///
-    Result<void, StunError> integrity(Digest digest)
+    private Result<void, StunError> integrity(Digest digest)
     {
         Debug.Assert(bytes.Count >= 20);
         int len = bytes.Count;
 
         // compute new size,
         // new size include the MessageIntegrity attribute size.
-        set_len(len + 4);
+        set_len((uint64)len + 4);
 
         // write MessageIntegrity attribute.
-        let hmac_output = hmac_sha1(digest, bytes).into_bytes();
-        uint16 msgIntegrity = AttrKind.MessageIntegrity.into();
-        self.bytes.put_u16(AttrKind::MessageIntegrity as u16);
-        self.bytes.put_u16(20);
-        self.bytes.put(hmac_output.as_slice());
+        Span<uint8>[] bytespan = scope Span<uint8>[1](bytes.GetRange(0));
+        Span<Span<uint8>> spanospan = Span<Span<uint8>>(bytespan, 0);
+        let hmac_output = hmac_sha1(digest.bytes, spanospan);
+        if (hmac_output case .Ok(let hmacbytes))
+        {
+            uint16 msgIntegrity = AttrKind.MessageIntegrity.Underlying;
+            bytes.Add((uint8)(msgIntegrity >> 8));
+            bytes.Add((uint8)(msgIntegrity & 0xFF));
+            bytes.Add(0);
+            bytes.Add(20);
+            bytes.AddRange(hmacbytes);
+        }
+        else
+        {
+            return .Err(.SummaryFailed);
+        }
 
         // compute new size,
         // new size include the Fingerprint attribute size.
-        self.set_len(len + 4 + 8);
+        set_len((uint64)len + 4 + 8);
 
         // CRC Fingerprint
-        let fingerprint = util::fingerprint(self.bytes);
-        self.bytes.put_u16(AttrKind::Fingerprint as u16);
-        self.bytes.put_u16(4);
-        self.bytes.put_u32(fingerprint);
+        uint32 fingerprint = fingerprint(bytes);
+        bytes.Add((uint8)(AttrKind.Fingerprint.Underlying >> 8));
+        bytes.Add((uint8)(AttrKind.Fingerprint.Underlying & 0xFF));
+        bytes.Add(0);
+        bytes.Add(4);
+        bytes.Add((uint8)(fingerprint >> 24));
+        bytes.Add((uint8)(fingerprint >> 16));
+        bytes.Add((uint8)(fingerprint >> 8));
+        bytes.Add((uint8)(fingerprint & 0xFF));
 
-        Ok(())
+        return .Ok;
     }
 
     // set stun message header size.
-    fn set_len(&mut self, len: usize) {
-        self.bytes[2..4].copy_from_slice((len as u16).to_be_bytes().as_slice());
+    private void set_len(uint64 len)
+    {
+        bytes[2] = (uint8)(len >> 8);
+        bytes[3] = (uint8)(len & 0xFF);
     }
 }
 
-pub struct MessageDecoder;
-
-impl MessageDecoder {
-    /// # Test
-    ///
-    /// ```
-    /// use std::convert::TryFrom;
-    /// use turn_server::stun::attribute::*;
-    /// use turn_server::stun::method::*;
-    /// use turn_server::stun::*;
-    ///
-    /// let buffer: [u8; 20] = [
-    ///     0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xa4, 0x42, 0x72, 0x6d, 0x49, 0x42,
-    ///     0x72, 0x52, 0x64, 0x48, 0x57, 0x62, 0x4b, 0x2b,
-    /// ];
-    ///
-    /// let mut attributes = Attributes::default();
-    /// let message = MessageDecoder::decode(&buffer[..], &mut attributes).unwrap();
-    /// assert_eq!(
-    ///     message.method(),
-    ///     StunMethod::Binding(StunMethodKind::Request)
-    /// );
-    /// assert!(message.get::<UserName>().is_none());
-    /// ```
-    pub fn decode<'a>(bytes: &'a [u8], attributes: &'a mut Attributes) -> Result<MessageRef<'a>, StunError> {
-        if bytes.len() < 20 {
-            return Err(StunError::InvalidInput);
+class MessageDecoder
+{
+    public static Result<MessageRef, StunError> decode(Span<uint8> bytes, Attributes attributes)
+    {
+        if (bytes.Length < 20)
+        {
+            return .Err(StunError.InvalidInput);
         }
 
-        let count_size = bytes.len();
-        let mut find_integrity = false;
-        let mut payload_size = 0;
+        int count_size = bytes.Length;
+        bool find_integrity = false;
+        int payload_size = 0;
 
         // message type
         // message size
         // check fixed magic cookie
         // check if the message size is overflow
-        let method = StunMethod::try_from(u16::from_be_bytes(bytes[..2].try_into()?))?;
-        let size = u16::from_be_bytes(bytes[2..4].try_into()?) as usize + 20;
-        if bytes[4..8] != COOKIE[..] {
-            return Err(StunError::NotFoundCookie);
+        Method.StunMethod method = Method.StunMethod.TryFrom((uint16)bytes[1] << 8 | bytes[0]);
+        uint16 size = ((uint16)bytes[3] << 8 | bytes[2]) + 20;
+        if (bytes[4] != COOKIE[0] || bytes[5] != COOKIE[1] ||
+            bytes[6] != COOKIE[2] || bytes[7] != COOKIE[3])
+        {
+            return .Err(StunError.NotFoundCookie);
         }
 
-        if count_size < size {
-            return Err(StunError::InvalidInput);
+        if (count_size < size)
+        {
+            return .Err(StunError.InvalidInput);
         }
 
-        let mut offset = 20;
-        loop {
+        int offset = 20;
+        while (count_size - offset > 4)
+        {
             // if the buf length is not long enough to continue,
             // jump out of the loop.
-            if count_size - offset < 4 {
-                break;
-            }
 
             // get attribute type
-            let key = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
+            uint16 key = (uint16)bytes[offset + 1] << 8 | bytes[offset];
 
             // whether the MessageIntegrity attribute has been found,
             // if found, record the current offset position.
-            if !find_integrity {
-                payload_size = offset as u16;
+            if (!find_integrity)
+            {
+                payload_size = offset;
             }
 
             // check whether the current attribute is MessageIntegrity,
             // if it is, mark this attribute has been found.
-            if key == AttrKind::MessageIntegrity as u16 {
+            if (key == (uint16)AttrKind.MessageIntegrity.Underlying)
+            {
                 find_integrity = true;
             }
 
             // get attribute size
-            let size = u16::from_be_bytes([bytes[offset + 2], bytes[offset + 3]]) as usize;
+            uint16 bsize = (uint16)bytes[offset + 3] << 8 | bytes[offset + 2];
 
             // check if the attribute length has overflowed.
             offset += 4;
-            if count_size - offset < size {
+            if (count_size - offset < bsize)
+            {
                 break;
             }
 
             // body range.
-            let range = offset..(offset + size);
+            uint64 rangeMin = (uint64)offset;
 
             // if there are padding bytes,
             // skip padding size.
-            if size > 0 {
-                offset += size;
-                offset += util::pad_size(size);
+            if (bsize > 0)
+            {
+                offset += bsize;
+                offset += (int)pad_size(bsize);
             }
 
             // skip the attributes that are not supported.
-            let attrkind = match AttrKind::try_from(key) {
-                Err(_) => continue,
-                Ok(a) => a,
-            };
+            AttrKind attrkind;
+            if (!(AttrKind.TryFrom(key) case .Ok(out attrkind)))
+            {
+                continue;
+            }
 
             // get attribute body
-            // insert attribute to attributes list.
-            attributes.append(attrkind, range);
+            // insert attribute to c=attributes list.
+            attributes.aAppend(attrkind, uint64[2](rangeMin, bsize));
         }
 
-        Ok(MessageRef {
-            size: payload_size,
-            attributes,
-            method,
-            bytes,
-        })
+        return .Ok(MessageRef {
+            size = (uint16)payload_size,
+            attributes = attributes,
+            method = method,
+            bytes = bytes
+        });
     }
 
-    /// # Test
-    ///
-    /// ```
-    /// use turn_server::stun::*;
-    ///
-    /// let buffer: [u8; 20] = [
-    ///     0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xa4, 0x42, 0x72, 0x6d, 0x49, 0x42,
-    ///     0x72, 0x52, 0x64, 0x48, 0x57, 0x62, 0x4b, 0x2b,
-    /// ];
-    ///
-    /// let size = MessageDecoder::message_size(&buffer[..]).unwrap();
-    /// assert_eq!(size, 20);
-    /// ```
-    pub fn message_size(buf: &[u8]) -> Result<usize, StunError> {
-        if buf[0] >> 6 != 0 || buf.len() < 20 {
-            return Err(StunError::InvalidInput);
+    public static Result<uint64, StunError> message_size(Span<uint8> buf)
+    {
+        if (buf[0] >> 6 != 0 || buf.Length < 20)
+        {
+            return .Err(StunError.InvalidInput);
         }
 
-        Ok((u16::from_be_bytes(buf[2..4].try_into()?) + 20) as usize)
+        return .Ok(((uint64)buf[3] << 8 | buf[2]) + 20);
     }
 }
 
-#[derive(Debug)]
-pub struct MessageRef<'a> {
+struct MessageRef
+{
     /// message method.
-    method: StunMethod,
+    public Method.StunMethod method;
     /// message source bytes.
-    bytes: &'a [u8],
+    public Span<uint8> bytes;
     /// message payload size.
-    size: u16,
+    public uint16 size;
     // message attribute list.
-    attributes: &'a Attributes,
-}
+    public Attributes attributes;
 
-impl<'a> MessageRef<'a> {
     /// message method.
-    #[inline]
-    pub fn method(&self) -> StunMethod {
-        self.method
+    public Method.StunMethod method()
+    {
+        return method;
     }
 
     /// message transaction id.
-    #[inline]
-    pub fn token(&self) -> &'a [u8] {
-        &self.bytes[8..20]
+    public Span<uint8> token()
+    {
+        return bytes.Slice(8, 12);
+    }
+
+    private Result<STAttribute, STError> getAttrHelper(AttrKind getWhat, uint64[2] range)
+    {
+        switch (getWhat)
+        {
+        case .UserName:
+            return UserName.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .Data:
+            return Data.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .MappedAddress:
+            return MappedAddress.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .MessageIntegrity:
+            return MessageIntegrity.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .ErrorCode:
+            return ErrorCode.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .ChannelNumber:
+            return ChannelNumber.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .Lifetime:
+            return Lifetime.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .XorPeerAddress:
+            return XorPeerAddress.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .Realm:
+            return Realm.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .Nonce:
+            return Nonce.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .XorRelayedAddress:
+            return Nonce.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .RequestedAddressFamily:
+            return RequestedAddressFamily.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .EvenPort:
+            return EvenPort.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .RequestedTransport:
+            return RequestedTransport.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .DontFragment:
+            return DontFragment.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .AccessToken:
+            return AccessToken.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .XorMappedAddress:
+            return XorMappedAddress.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .ReservationToken:
+            return ReservationToken.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .Priority:
+            return Priority.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .UseCandidate:
+            return UseCandidate.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .AdditionalAddressFamily:
+            return AdditionalAddressFamily.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .Software:
+            return Software.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .Fingerprint:
+            return Fingerprint.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .IceControlled:
+            return IceControlled.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .IceControlling:
+            return IceControlling.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        case .ResponseOrigin:
+            return ResponseOrigin.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
+
+        default:
+            return .Err(StunError.InvalidInput);
+        }
     }
 
     /// get attribute.
     ///
     /// get attribute from message attribute list.
-    ///
-    /// # Test
-    ///
-    /// ```
-    /// use std::convert::TryFrom;
-    /// use turn_server::stun::attribute::*;
-    /// use turn_server::stun::*;
-    ///
-    /// let buffer = [
-    ///     0x00u8, 0x01, 0x00, 0x00, 0x21, 0x12, 0xa4, 0x42, 0x72, 0x6d, 0x49,
-    ///     0x42, 0x72, 0x52, 0x64, 0x48, 0x57, 0x62, 0x4b, 0x2b,
-    /// ];
-    ///
-    /// let mut attributes = Attributes::default();
-    /// let message = MessageDecoder::decode(&buffer[..], &mut attributes).unwrap();
-    /// assert!(message.get::<UserName>().is_none());
-    /// ```
-    pub fn get<T: Attribute<'a>>(&self) -> Option<T::Item> {
-        let range = self.attributes.get(&T::KIND)?;
-        T::decode(&self.bytes[range.clone()], self.token()).ok()
+    public Result<STAttribute, STError> getAttr(AttrKind getWhat)
+    {
+        return getAttrHelper(getWhat, attributes.get(getWhat));
     }
 
     /// Gets all the values of an attribute from a list.
     ///
     /// Normally a stun message can have multiple attributes with the same name,
     /// and this function will all the values of the current attribute.
-    ///
-    /// # Test
-    ///
-    /// ```
-    /// use std::convert::TryFrom;
-    /// use turn_server::stun::attribute::*;
-    /// use turn_server::stun::*;
-    ///
-    /// let buffer = [
-    ///     0x00u8, 0x01, 0x00, 0x00, 0x21, 0x12, 0xa4, 0x42, 0x72, 0x6d, 0x49,
-    ///     0x42, 0x72, 0x52, 0x64, 0x48, 0x57, 0x62, 0x4b, 0x2b,
-    /// ];
-    ///
-    /// let mut attributes = Attributes::default();
-    /// let message = MessageDecoder::decode(&buffer[..], &mut attributes).unwrap();
-    ///
-    /// assert_eq!(message.get_all::<UserName>().next(), None);
-    /// ```
-    pub fn get_all<T: Attribute<'a>>(&self) -> impl Iterator<Item = T::Item> {
-        self.attributes
-            .get_all(&T::KIND)
-            .map(|it| T::decode(&self.bytes[it.clone()], self.token()))
-            .filter(|it| it.is_ok())
-            .map(|it| it.unwrap())
+    public Span<STAttribute> get_all(AttrKind getWhat)
+    {
+        Span<uint64[2]>.Enumerator attrRanges = attributes.get_all(getWhat);
+        List<STAttribute> collectionList = scope List<STAttribute>();
+
+        for (let r in attrRanges)
+        {
+            if (getAttrHelper(getWhat, r) case .Ok(let outAttr))
+            {
+                collectionList.Add(outAttr);
+            }
+        }
+
+        return collectionList;
     }
 
     /// check MessageRefIntegrity attribute.
     ///
     /// return whether the `MessageRefIntegrity` attribute
     /// contained in the message can pass the check.
-    ///
-    /// # Test
-    ///
-    /// ```
-    /// use std::convert::TryFrom;
-    /// use turn_server::stun::*;
-    ///
-    /// let buffer = [
-    ///     0x00u8, 0x03, 0x00, 0x50, 0x21, 0x12, 0xa4, 0x42, 0x64, 0x4f, 0x5a,
-    ///     0x78, 0x6a, 0x56, 0x33, 0x62, 0x4b, 0x52, 0x33, 0x31, 0x00, 0x19, 0x00,
-    ///     0x04, 0x11, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x05, 0x70, 0x61, 0x6e,
-    ///     0x64, 0x61, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x09, 0x72, 0x61, 0x73,
-    ///     0x70, 0x62, 0x65, 0x72, 0x72, 0x79, 0x00, 0x00, 0x00, 0x00, 0x15, 0x00,
-    ///     0x10, 0x31, 0x63, 0x31, 0x33, 0x64, 0x32, 0x62, 0x32, 0x34, 0x35, 0x62,
-    ///     0x33, 0x61, 0x37, 0x33, 0x34, 0x00, 0x08, 0x00, 0x14, 0xd6, 0x78, 0x26,
-    ///     0x99, 0x0e, 0x15, 0x56, 0x15, 0xe5, 0xf4, 0x24, 0x74, 0xe2, 0x3c, 0x26,
-    ///     0xc5, 0xb1, 0x03, 0xb2, 0x6d,
-    /// ];
-    ///
-    /// let mut attributes = Attributes::default();
-    /// let message = MessageDecoder::decode(&buffer[..], &mut attributes).unwrap();
-    /// let result = message
-    ///     .integrity(&util::long_term_credential_digest(
-    ///         "panda",
-    ///         "panda",
-    ///         "raspberry",
-    ///     ))
-    ///     .is_ok();
-    /// assert!(result);
-    /// ```
-    pub fn integrity(&self, digest: &Digest) -> Result<(), StunError> {
-        if self.bytes.is_empty() || self.size < 20 {
-            return Err(StunError::InvalidInput);
+    public Result<void, StunError> integrity(Digest digest)
+    {
+        if (bytes.IsEmpty || size < 20)
+        {
+            return .Err(StunError.InvalidInput);
         }
 
         // unwrap MessageIntegrity attribute,
         // an error occurs if not found.
-        let integrity = self.get::<MessageIntegrity>().ok_or(StunError::NotFoundIntegrity)?;
+        MessageIntegrity integrity;
 
-        // create multiple submit.
-        let size_buf = (self.size + 4).to_be_bytes();
-        let body = [&self.bytes[0..2], &size_buf, &self.bytes[4..self.size as usize]];
-
-        // digest the message buffer.
-        let hmac_output = util::hmac_sha1(digest, &body)?.into_bytes();
-        let hmac_buf = hmac_output.as_slice();
-
-        // Compare local and original attribute.
-        if integrity != hmac_buf {
-            return Err(StunError::IntegrityFailed);
+        if (getAttr(.MessageIntegrity) case .Ok(let lintegrity))
+        {
+            integrity = (MessageIntegrity)lintegrity;
+        }
+        else
+        {
+            return .Err(.NotFoundIntegrity);
         }
 
-        Ok(())
+        // create multiple submit.
+        uint8[3] size_buf = uint8[3]();
+        size_buf[0] = (uint8)((uint32)(size + 4) >> 16);
+        size_buf[1] = (uint8)((size + 4) >> 8);
+        size_buf[2] = (uint8)((size + 4) & 0xFF);
+        uint8[] body = scope uint8[size + 5];
+        body[0] = bytes[0];
+        body[1] = bytes[1];
+        body[2] = size_buf[0];
+        body[3] = size_buf[1];
+        body[4] = size_buf[2];
+        for (int i = 4; i < size; i++)
+        {
+            body[i + 5] = bytes[i];
+        }
+
+        // digest the message buffer.
+        let hmac_output = hmac_sha1((Span<uint8>)digest.bytes, Span<Span<uint8>>(scope Span<uint8>[]((Span<uint8>)body)));
+        if (hmac_output case .Ok(let hmac_buf))
+        {
+            // Compare local and original attribute.
+            if (integrity.byteVal != hmac_buf)
+            {
+                return .Err(.IntegrityFailed);
+            }
+    
+            return .Ok;
+        }
+
+        return .Err(.NotFoundIntegrity);
     }
 }

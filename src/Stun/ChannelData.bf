@@ -43,7 +43,7 @@ struct ChannelData
     /// channel number.
     public uint16 number;
 
-    public Result<uint64, StunError> message_size(Span<uint8> bytes, bool is_tcp)
+    public static Result<uint64, StunError> message_size(Span<uint8> bytes, bool is_tcp)
     {
         if (bytes.Length < 4)
         {
@@ -74,7 +74,7 @@ struct ChannelData
         obytes.AddRange(bytes);
     }
 
-    public Result<ChannelData, StunError> TryFrom(Span<uint8> bytes)
+    public static Result<ChannelData, StunError> TryFrom(Span<uint8> bytes)
     {
         if (bytes.Length < 4)
         {

@@ -329,50 +329,102 @@ class Addr
 /// 0x8003: ALTERNATE-DOMAIN
 enum AttrKind : uint16
 {
-    Unknown = 0x0000,
-    MappedAddress = 0x0001,
-    UserName = 0x0006,
-    MessageIntegrity = 0x0008,
-    ErrorCode = 0x0009,
-    ChannelNumber = 0x000C,
-    Lifetime = 0x000D,
-    XorPeerAddress = 0x0012,
-    Data = 0x0013,
-    Realm = 0x0014,
-    Nonce = 0x0015,
-    XorRelayedAddress = 0x0016,
-    RequestedAddressFamily = 0x0017,
-    EvenPort = 0x0018,
-    RequestedTransport = 0x0019,
-    DontFragment = 0x001A,
-    AccessToken = 0x001B,
-    MessageIntegritySha256 = 0x001C,
-    PasswordAlgorithm = 0x001D,
-    UserHash = 0x001E,
-    XorMappedAddress = 0x0020,
-    ReservationToken = 0x0022,
-    Priority = 0x0024,
-    UseCandidate = 0x0025,
-    Padding = 0x0026,
-    ResponsePort = 0x0027,
-    ConnectionId = 0x002A,
-    AdditionalAddressFamily = 0x8000,
-    AddressErrorCode = 0x8001,
-    PasswordAlgorithms = 0x8002,
-    AlternateDomain = 0x8003,
-    Icmp = 0x8004,
-    Software = 0x8022,
-    AlternateServer = 0x8023,
-    TransactionTransmitCounter = 0x8025,
-    CacheTimeout = 0x8027,
-    Fingerprint = 0x8028,
-    IceControlled = 0x8029,
-    IceControlling = 0x802A,
-    ResponseOrigin = 0x802B,
-    OtherAddress = 0x802C,
-    EcnCheck = 0x802D,
-    ThirdPartyAuathorization = 0x802E,
-    MobilityTicket = 0x8030
+    case Unknown = 0x0000;
+    case MappedAddress = 0x0001;
+    case UserName = 0x0006;
+    case MessageIntegrity = 0x0008;
+    case ErrorCode = 0x0009;
+    case ChannelNumber = 0x000C;
+    case Lifetime = 0x000D;
+    case XorPeerAddress = 0x0012;
+    case Data = 0x0013;
+    case Realm = 0x0014;
+    case Nonce = 0x0015;
+    case XorRelayedAddress = 0x0016;
+    case RequestedAddressFamily = 0x0017;
+    case EvenPort = 0x0018;
+    case RequestedTransport = 0x0019;
+    case DontFragment = 0x001A;
+    case AccessToken = 0x001B;
+    case MessageIntegritySha256 = 0x001C;
+    case PasswordAlgorithm = 0x001D;
+    case UserHash = 0x001E;
+    case XorMappedAddress = 0x0020;
+    case ReservationToken = 0x0022;
+    case Priority = 0x0024;
+    case UseCandidate = 0x0025;
+    case Padding = 0x0026;
+    case ResponsePort = 0x0027;
+    case ConnectionId = 0x002A;
+    case AdditionalAddressFamily = 0x8000;
+    case AddressErrorCode = 0x8001;
+    case PasswordAlgorithms = 0x8002;
+    case AlternateDomain = 0x8003;
+    case Icmp = 0x8004;
+    case Software = 0x8022;
+    case AlternateServer = 0x8023;
+    case TransactionTransmitCounter = 0x8025;
+    case CacheTimeout = 0x8027;
+    case Fingerprint = 0x8028;
+    case IceControlled = 0x8029;
+    case IceControlling = 0x802A;
+    case ResponseOrigin = 0x802B;
+    case OtherAddress = 0x802C;
+    case EcnCheck = 0x802D;
+    case ThirdPartyAuthorization = 0x802E;
+    case MobilityTicket = 0x8030;
+
+    public static Result<AttrKind> TryFrom(uint16 val)
+    {
+        switch (val)
+        {
+            case 0x0000: return .Ok(AttrKind.Unknown);
+            case 0x0001: return .Ok(AttrKind.MappedAddress);
+            case 0x0006: return .Ok(AttrKind.UserName);
+            case 0x0008: return .Ok(AttrKind.MessageIntegrity);
+            case 0x0009: return .Ok(AttrKind.ErrorCode);
+            case 0x000C: return .Ok(AttrKind.ChannelNumber);
+            case 0x000D: return .Ok(AttrKind.Lifetime);
+            case 0x0012: return .Ok(AttrKind.XorPeerAddress);
+            case 0x0013: return .Ok(AttrKind.Data);
+            case 0x0014: return .Ok(AttrKind.Realm);
+            case 0x0015: return .Ok(AttrKind.Nonce);
+            case 0x0016: return .Ok(AttrKind.XorRelayedAddress);
+            case 0x0017: return .Ok(AttrKind.RequestedAddressFamily);
+            case 0x0018: return .Ok(AttrKind.EvenPort);
+            case 0x0019: return .Ok(AttrKind.RequestedTransport);
+            case 0x001A: return .Ok(AttrKind.DontFragment);
+            case 0x001B: return .Ok(AttrKind.AccessToken);
+            case 0x001C: return .Ok(AttrKind.MessageIntegritySha256);
+            case 0x001D: return .Ok(AttrKind.PasswordAlgorithm);
+            case 0x001E: return .Ok(AttrKind.UserHash);
+            case 0x0020: return .Ok(AttrKind.XorMappedAddress);
+            case 0x0022: return .Ok(AttrKind.ReservationToken);
+            case 0x0024: return .Ok(AttrKind.Priority);
+            case 0x0025: return .Ok(AttrKind.UseCandidate);
+            case 0x0026: return .Ok(AttrKind.Padding);
+            case 0x0027: return .Ok(AttrKind.ResponsePort);
+            case 0x002A: return .Ok(AttrKind.ConnectionId);
+            case 0x8000: return .Ok(AttrKind.AdditionalAddressFamily);
+            case 0x8001: return .Ok(AttrKind.AddressErrorCode);
+            case 0x8002: return .Ok(AttrKind.PasswordAlgorithms);
+            case 0x8003: return .Ok(AttrKind.AlternateDomain);
+            case 0x8004: return .Ok(AttrKind.Icmp);
+            case 0x8022: return .Ok(AttrKind.Software);
+            case 0x8023: return .Ok(AttrKind.AlternateServer);
+            case 0x8025: return .Ok(AttrKind.TransactionTransmitCounter);
+            case 0x8027: return .Ok(AttrKind.CacheTimeout);
+            case 0x8028: return .Ok(AttrKind.Fingerprint);
+            case 0x8029: return .Ok(AttrKind.IceControlled);
+            case 0x802A: return .Ok(AttrKind.IceControlling);
+            case 0x802B: return .Ok(AttrKind.ResponseOrigin);
+            case 0x802C: return .Ok(AttrKind.OtherAddress);
+            case 0x802D: return .Ok(AttrKind.EcnCheck);
+            case 0x802E: return .Ok(AttrKind.ThirdPartyAuthorization);
+            case 0x8030: return .Ok(AttrKind.MobilityTicket);
+            default: return .Err;
+        }
+    }
 }
 
 /// dyn stun/turn message attribute.
@@ -385,10 +437,10 @@ interface STAttribute
     }
 
     /// write the current attribute to the bytesfer.
-    public void encode(List<uint8> bytes, Span<uint8> token);
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token);
 
     /// convert bytesfer to current attribute.
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token);
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token);
 }
 
 /// [RFC8265]: https://datatracker.ietf.org/doc/html/rfc8265
@@ -429,12 +481,13 @@ struct UserName : STAttribute, IDisposable
         get { return AttrKind.UserName; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        bytes.AddRange(Span<char8>(username.CStr(), username.Length).ToRawData());
+        UserName attrspec = (UserName)attr;
+        bytes.AddRange(Span<char8>(attrspec.username.CStr(), attrspec.username.Length).ToRawData());
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(UserName(StringView((char8*)bytes.Ptr, bytes.Length)));
     }
@@ -465,12 +518,12 @@ struct Data : STAttribute
         get { return AttrKind.Data; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        bytes.AddRange(data);
+        bytes.AddRange(((Data)attr).data);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Data(bytes));
     }
@@ -518,12 +571,13 @@ struct Realm : STAttribute, IDisposable
         get { return AttrKind.Realm; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        bytes.AddRange(Span<char8>(realm.CStr(), realm.Length).ToRawData());
+        Realm attrspec = (Realm)attr;
+        bytes.AddRange(Span<char8>(attrspec.realm.CStr(), attrspec.realm.Length).ToRawData());
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Realm(StringView((char8*)bytes.Ptr, bytes.Length)));
     }
@@ -564,12 +618,13 @@ struct Nonce : STAttribute, IDisposable
         get { return AttrKind.Nonce; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        bytes.AddRange(Span<char8>(strVal.CStr(), strVal.Length).ToRawData());
+        Nonce attrspec = (Nonce)attr;
+        bytes.AddRange(Span<char8>(attrspec.strVal.CStr(), attrspec.strVal.Length).ToRawData());
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Nonce(StringView((char8*)bytes.Ptr, bytes.Length)));
     }
@@ -610,12 +665,13 @@ struct Software : STAttribute, IDisposable
         get { return AttrKind.Software; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        bytes.AddRange(Span<char8>(strVal.CStr(), strVal.Length).ToRawData());
+        Software attrspec = (Software)attr;
+        bytes.AddRange(Span<char8>(attrspec.strVal.CStr(), attrspec.strVal.Length).ToRawData());
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Software(StringView((char8*)bytes.Ptr, bytes.Length)));
     }
@@ -671,12 +727,12 @@ struct MessageIntegrity : STAttribute
         get { return AttrKind.MessageIntegrity; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        bytes.AddRange(byteVal);
+        bytes.AddRange(((MessageIntegrity)attr).byteVal);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(MessageIntegrity(bytes));
     }
@@ -708,12 +764,12 @@ struct XorPeerAddress : STAttribute
         get { return AttrKind.XorPeerAddress; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        Addr.encode(addr, token, bytes, true);
+        Addr.encode(((XorPeerAddress)attr).addr, token, bytes, true);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(XorPeerAddress(Addr.decode(bytes, token, true)));
     }
@@ -745,12 +801,12 @@ struct XorRelayedAddress : STAttribute
         get { return AttrKind.XorRelayedAddress; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        Addr.encode(addr, token, bytes, true);
+        Addr.encode(((XorRelayedAddress)attr).addr, token, bytes, true);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(XorRelayedAddress(Addr.decode(bytes, token, true)));
     }
@@ -809,12 +865,12 @@ struct XorMappedAddress : STAttribute
         get { return AttrKind.XorMappedAddress; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        Addr.encode(addr, token, bytes, true);
+        Addr.encode(((XorMappedAddress)attr).addr, token, bytes, true);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(XorMappedAddress(Addr.decode(bytes, token, true)));
     }
@@ -860,12 +916,12 @@ struct MappedAddress : STAttribute
         get { return AttrKind.MappedAddress; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        Addr.encode(addr, token, bytes, false);
+        Addr.encode(((MappedAddress)attr).addr, token, bytes, true);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(MappedAddress(Addr.decode(bytes, token, false)));
     }
@@ -896,12 +952,12 @@ struct ResponseOrigin : STAttribute
         get { return AttrKind.ResponseOrigin; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        Addr.encode(addr, token, bytes, false);
+        Addr.encode(((ResponseOrigin)attr).addr, token, bytes, true);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(ResponseOrigin(Addr.decode(bytes, token, false)));
     }
@@ -947,7 +1003,7 @@ struct ResponseOrigin : STAttribute
 ///      
 /// 500  Server Error: The server has suffered a temporary error.  The
 ///      client should try again.
-enum ErrorKind : uint16
+enum HttpErrorKind : uint16
 {
     case TryAlternate = errno(300);
     case BadRequest = errno(400);
@@ -1077,7 +1133,7 @@ struct StunRespError
     }
 
     /// create error from error type.
-    public static StunRespError from(ErrorKind value)
+    public static StunRespError from(HttpErrorKind value)
     {
         String serror = scope String();
         value.ToString(serror);
@@ -1156,12 +1212,12 @@ struct ErrorCode : STAttribute
         get { return AttrKind.ErrorCode; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        error.encode(bytes);
+        ((ErrorCode)attr).error.encode(bytes);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(ErrorCode(StunRespError.try_from(bytes)));
     }
@@ -1192,16 +1248,17 @@ struct Lifetime : STAttribute
         get { return AttrKind.Lifetime; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
+        uint32 attrval = ((Lifetime)attr).lifetime;
         // Make 4 uint to respresent an uint32
-        bytes.Add((uint8)(lifetime >> 24));
-        bytes.Add((uint8)(lifetime >> 16));
-        bytes.Add((uint8)(lifetime >> 8));
-        bytes.Add((uint8)(lifetime & 0xFF));
+        bytes.Add((uint8)(attrval >> 24));
+        bytes.Add((uint8)(attrval >> 16));
+        bytes.Add((uint8)(attrval >> 8));
+        bytes.Add((uint8)(attrval & 0xFF));
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Lifetime((uint32)bytes[3] << 24 | (uint32)bytes[2] << 16 | (uint16)bytes[1] << 8 | bytes[0]));
     }
@@ -1238,16 +1295,16 @@ struct RequestedTransport : STAttribute
         get { return AttrKind.RequestedTransport; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
         // Make 4 uint to respresent an uint32
-        bytes.Add((uint8)(transport.Underlying >> 24));
+        bytes.Add((uint8)(((RequestedTransport)attr).transport.Underlying >> 24));
         bytes.Add(0);
         bytes.Add(0);
         bytes.Add(0);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         uint32 decodedValue = (uint32)bytes[0];
         if (decodedValue == Transport.UDP.Underlying)
@@ -1317,8 +1374,9 @@ struct Fingerprint : STAttribute
         get { return AttrKind.Fingerprint; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
+        uint32 value = ((Fingerprint)attr).value;
         // Make 4 uint to respresent an uint32
         bytes.Add((uint8)(value >> 24));
         bytes.Add((uint8)(value >> 16));
@@ -1326,7 +1384,7 @@ struct Fingerprint : STAttribute
         bytes.Add((uint8)(value & 0xFF));
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Fingerprint((uint32)bytes[3] << 24 | (uint32)bytes[2] << 16 | (uint16)bytes[1] << 8 | bytes[0]));
     }
@@ -1357,14 +1415,14 @@ struct ChannelNumber : STAttribute
         get { return AttrKind.ChannelNumber; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        // Make 4 uint to respresent an uint32
-        bytes.Add((uint8)(number >> 8));
-        bytes.Add((uint8)(number & 0xFF));
+        uint16 value = ((ChannelNumber)attr).number;
+        bytes.Add((uint8)(value >> 8));
+        bytes.Add((uint8)(value & 0xFF));
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(ChannelNumber((uint16)bytes[1] << 8 | bytes[0]));
     }
@@ -1399,8 +1457,10 @@ struct IceControlling : STAttribute
         get { return AttrKind.IceControlling; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
+        uint64 value = ((IceControlling)attr).value;
+
         // Make 8 uint to respresent an uint64
         bytes.Add((uint8)(value >> 56));
         bytes.Add((uint8)(value >> 48));
@@ -1412,7 +1472,7 @@ struct IceControlling : STAttribute
         bytes.Add((uint8)(value & 0xFF));
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(IceControlling((uint64)bytes[7] << 56 | (uint64)bytes[6] << 48 |
             (uint64)bytes[5] << 40 | (uint64)bytes[4] << 32 |
@@ -1435,12 +1495,12 @@ struct UseCandidate : STAttribute
         get { return AttrKind.UseCandidate; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
         // No content, just a flag
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(UseCandidate());
     }
@@ -1475,8 +1535,10 @@ struct IceControlled : STAttribute
         get { return AttrKind.IceControlled; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
+        uint64 value = ((IceControlled)attr).value;
+
         // Make 8 uint to respresent an uint64
         bytes.Add((uint8)(value >> 56));
         bytes.Add((uint8)(value >> 48));
@@ -1488,7 +1550,7 @@ struct IceControlled : STAttribute
         bytes.Add((uint8)(value & 0xFF));
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(IceControlled((uint64)bytes[7] << 56 | (uint64)bytes[6] << 48 |
             (uint64)bytes[5] << 40 | (uint64)bytes[4] << 32 |
@@ -1521,8 +1583,10 @@ struct Priority : STAttribute
         get { return AttrKind.Priority; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
+        uint32 value = ((Priority)attr).value;
+
         // Make 4 uint to respresent an uint32
         bytes.Add((uint8)(value >> 24));
         bytes.Add((uint8)(value >> 16));
@@ -1530,7 +1594,7 @@ struct Priority : STAttribute
         bytes.Add((uint8)(value & 0xFF));
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Priority((uint32)bytes[3] << 24 | (uint32)bytes[2] << 16 | (uint16)bytes[1] << 8 | bytes[0]));
     }
@@ -1564,8 +1628,9 @@ struct ReservationToken : STAttribute
         get { return AttrKind.ReservationToken; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
+        uint64 value = ((ReservationToken)attr).value;
         // Make 8 uint to respresent an uint64
         bytes.Add((uint8)(value >> 56));
         bytes.Add((uint8)(value >> 48));
@@ -1577,7 +1642,7 @@ struct ReservationToken : STAttribute
         bytes.Add((uint8)(value & 0xFF));
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(ReservationToken((uint64)bytes[7] << 56 | (uint64)bytes[6] << 48 |
             (uint64)bytes[5] << 40 | (uint64)bytes[4] << 32 |
@@ -1610,12 +1675,12 @@ struct EvenPort : STAttribute
         get { return AttrKind.EvenPort; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        bytes.Add(value ? 128 : 0);
+        bytes.Add(((EvenPort)attr).value ? 128 : 0);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(EvenPort(bytes[0] == 128));
     }
@@ -1645,12 +1710,12 @@ struct RequestedAddressFamily : STAttribute
         get { return AttrKind.RequestedAddressFamily; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        bytes.Add(ipFam.Underlying);
+        bytes.Add(((RequestedAddressFamily)attr).ipFam.Underlying);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         if (IpFamily.TryFrom(bytes[0]) case .Ok(let family))
         {
@@ -1687,12 +1752,12 @@ struct AdditionalAddressFamily : STAttribute
         get { return AttrKind.AdditionalAddressFamily; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+     public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
-        bytes.Add(ipFam.Underlying);
+        bytes.Add(((AdditionalAddressFamily)attr).ipFam.Underlying);
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         if (IpFamily.TryFrom(bytes[0]) case .Ok(let family))
         {
@@ -1722,12 +1787,12 @@ struct DontFragment : STAttribute
         get { return AttrKind.DontFragment; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
         // No content, just a flag
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(DontFragment());
     }
@@ -1775,40 +1840,42 @@ struct AccessToken : STAttribute, IDisposable
         get { return AttrKind.AccessToken; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
+        AccessToken acattr = (AccessToken)attr;
+
         // nonce_length:  Length of the nonce field.  The length of nonce for AEAD
         // algorithms is explained in [RFC5116].
-        bytes.Add((uint8)(nonce.Length >> 8));
-        bytes.Add((uint8)(nonce.Length & 0xFF));
-        bytes.AddRange(Span<char8>(nonce.CStr(), nonce.Length).ToRawData());
+        bytes.Add((uint8)(acattr.nonce.Length >> 8));
+        bytes.Add((uint8)(acattr.nonce.Length & 0xFF));
+        bytes.AddRange(Span<char8>(acattr.nonce.CStr(), acattr.nonce.Length).ToRawData());
 
         // key_length:  Length of the session key in octets.  The key length of 160 bits
         // MUST be supported (i.e., only the 160-bit key is used by HMAC-SHA-1 for
         // message integrity of STUN messages).  The key length facilitates the hash
         // agility plan discussed in Section 16.3 of [RFC5389].
-        bytes.Add((uint8)(mac_key.Length >> 8));
-        bytes.Add((uint8)(mac_key.Length & 0xFF));
-        bytes.AddRange(Span<char8>(mac_key.CStr(), mac_key.Length).ToRawData());
+        bytes.Add((uint8)(acattr.mac_key.Length >> 8));
+        bytes.Add((uint8)(acattr.mac_key.Length & 0xFF));
+        bytes.AddRange(Span<char8>(acattr.mac_key.CStr(), acattr.mac_key.Length).ToRawData());
 
         // timestamp:  64-bit unsigned integer field containing a timestamp.
-        bytes.Add((uint8)(timestamp >> 56));
-        bytes.Add((uint8)(timestamp >> 48));
-        bytes.Add((uint8)(timestamp >> 40));
-        bytes.Add((uint8)(timestamp >> 32));
-        bytes.Add((uint8)(timestamp >> 24));
-        bytes.Add((uint8)(timestamp >> 16));
-        bytes.Add((uint8)(timestamp >> 8));
-        bytes.Add((uint8)(timestamp & 0xFF));
+        bytes.Add((uint8)(acattr.timestamp >> 56));
+        bytes.Add((uint8)(acattr.timestamp >> 48));
+        bytes.Add((uint8)(acattr.timestamp >> 40));
+        bytes.Add((uint8)(acattr.timestamp >> 32));
+        bytes.Add((uint8)(acattr.timestamp >> 24));
+        bytes.Add((uint8)(acattr.timestamp >> 16));
+        bytes.Add((uint8)(acattr.timestamp >> 8));
+        bytes.Add((uint8)(acattr.timestamp & 0xFF));
 
         // lifetime:  The lifetime of the access token, in seconds.
-        bytes.Add((uint8)(lifetime >> 24));
-        bytes.Add((uint8)(lifetime >> 16));
-        bytes.Add((uint8)(lifetime >> 8));
-        bytes.Add((uint8)(lifetime & 0xFF));
+        bytes.Add((uint8)(acattr.lifetime >> 24));
+        bytes.Add((uint8)(acattr.lifetime >> 16));
+        bytes.Add((uint8)(acattr.lifetime >> 8));
+        bytes.Add((uint8)(acattr.lifetime & 0xFF));
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         // nonce_length:  Length of the nonce field.  The length of nonce for AEAD
         // algorithms is explained in [RFC5116].
@@ -1909,16 +1976,17 @@ struct ThirdPartyAuathorization : STAttribute, IDisposable
     /// The KIND of this attribute.
     public AttrKind KIND
     {
-        get { return AttrKind.ThirdPartyAuathorization; }
+        get { return AttrKind.ThirdPartyAuthorization; }
     }
 
-    public void encode(List<uint8> bytes, Span<uint8> token)
+    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
     {
         // Encode the server name as UTF-8
+        String server_name = ((ThirdPartyAuathorization)attr).server_name;
         bytes.AddRange(Span<char8>(server_name.CStr(), server_name.Length).ToRawData());
     }
 
-    public Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         // Decode the server name from UTF-8
         String serverName = scope String((char8*)bytes.Ptr, bytes.Length);
