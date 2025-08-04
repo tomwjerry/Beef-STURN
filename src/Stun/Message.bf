@@ -85,7 +85,7 @@ class MessageEncoder
         // here is to reserve the position.
         int os = bytes.Count;
         bytes.GrowUninitialized(2);
-        theval.encode(bytes, token);
+        T.encode(theval, bytes, token);
 
         // compute write index,
         // back to source index write size.
