@@ -1,5 +1,5 @@
 FileVersion = 1
-Projects = {BeefSturn = {Path = "."}, Beef-Net = {Path = "../Beef-Net"}, Beef-OpenSSL = {Path = "../Beef-Net/Beef-OpenSSL"}, BeefCrypto = {Path = "../BeefCrypto"}}
+Projects = {BeefSturn = {Path = "."}, Beef-Net = {Path = "../Beef-Net"}, Beef-OpenSSL = {Path = "../Beef-Net/Beef-OpenSSL"}, BeefCrypto = {Path = "../BeefCrypto"}, BeefToml = {Path = "../Beef-Toml-trunk/lib"}}
 
 [Workspace]
 StartupProject = "BeefSturn"
