@@ -1,40 +1,58 @@
-use std::sync::Arc;
+namespace BeefSturn;
 
-use crate::{config::Config, statistics::Statistics, turn::SessionAddr};
+using BeefSturn.Turn;
+using System;
+using sead;
 
-use anyhow::Result;
-use base64::{Engine, prelude::BASE64_STANDARD};
+struct ObserverEvData
+{
+    public SessionAddr session;
+    public StringView uname;
+    public Span<uint16> port;
+    public uint16 channel;
+    public uint32 lifetime;
 
-#[cfg(feature = "api")]
-use serde_json::json;
-
-#[derive(Clone)]
-pub struct Observer {
-    config: Arc<Config>,
-    #[cfg(feature = "api")]
-    statistics: Statistics,
-}
-
-impl Observer {
-    #[allow(unused_variables)]
-    pub async fn new(config: Arc<Config>, statistics: Statistics) -> Result<Self> {
-        Ok(Self {
-            #[cfg(feature = "api")]
-            statistics,
-            config,
-        })
+    public this(SessionAddr session, StringView uname)
+    {
+        this.session = session;
+        this.uname = uname;
     }
 }
 
-impl crate::turn::Observer for Observer {
-    fn get_password(&self, username: &str) -> Option<String> {
+class Observer
+{
+    private Config config;
+    private Statistics statistics;
+    public Event<delegate void(StringView message, ObserverEvData evdata)> obsEv;
+
+    public this(Config config, Statistics statistics)
+    {
+        this.statistics = statistics;
+        this.config = config;
+    }
+
+    public this(Observer copyobs)
+    {
+        this.config = copyobs.config;
+        this.statistics = copyobs.statistics;
+    }
+
+    public ~this()
+    {
+        obsEv.Dispose();
+    }
+
+    public StringView get_password(StringView username)
+    {
         // Match the static authentication information first.
-        if let Some(it) = self.config.auth.static_credentials.get(username) {
-            return Some(it.clone());
+        if (config.auth.static_credentials.GetValue(username) case .Ok(let  pwd))
+        {
+            return pwd;
         }
 
         // Try again to match the static authentication key.
-        if let Some(it) = &self.config.auth.static_auth_secret {
+        if (!config.auth.static_auth_secret.IsEmpty)
+        {
             // Because (TURN REST api) this RFC does not mandate the format of the username,
             // only suggested values. In principle, the RFC also indicates that the
             // timestamp part of username can be set at will, so the timestamp is not
@@ -42,17 +60,16 @@ impl crate::turn::Observer for Observer {
             // itself.
             //
             // https://datatracker.ietf.org/doc/html/draft-uberti-behave-turn-rest-00#section-2.2
-            return Some(
-                BASE64_STANDARD.encode(
-                    crate::stun::util::hmac_sha1(it.as_bytes(), &[username.as_bytes()])
-                        .ok()?
-                        .into_bytes()
-                        .as_slice(),
-                ),
-            );
+            if (Stun.hmac_sha1(config.auth.static_auth_secret.ToRawData(),
+                Span<Span<uint8>>(new Span<uint8>[](username.ToRawData()))) case .Ok(let thmac))
+            {
+                String b64 = scope String();
+                Base64.Encode(thmac, b64);
+                return b64;
+            }
         }
 
-        None
+        return null;
     }
 
     /// allocate request
@@ -71,30 +88,24 @@ impl crate::turn::Observer for Observer {
     /// server SHOULD NOT allocate ports in the range 0 - 1023 (the Well-
     /// Known Port range) to discourage clients from using TURN to run
     /// standard services.
-    #[allow(clippy::let_underscore_future)]
-    fn allocated(&self, addr: &SessionAddr, name: &str, port: u16) {
-        log::info!(
-            "allocate: address={:?}, interface={:?}, username={:?}, port={}",
+    public void allocated(BeefSturn.Turn.SessionAddr addr, StringView name, uint16 port)
+    {
+        Log.Info(
+            "allocate: address={}, interface={}, username={}, port={}",
             addr.address,
-            addr.interface,
+            addr.sainterface,
             name,
             port
         );
 
-        #[cfg(feature = "api")]
         {
-            self.statistics.register(*addr);
+            statistics.register(addr);
 
-            crate::api::events::send_with_stream("allocated", || {
-                json!({
-                    "session": {
-                        "address": addr.address,
-                        "interface": addr.interface,
-                    },
-                    "username": name,
-                    "port": port,
-                })
-            });
+            obsEv("allocated", ObserverEvData(SessionAddr()
+            {
+                address = addr.address,
+                sainterface = addr.sainterface
+            }, name) { port = Span<uint16>(new uint16[](port)) });
         }
     }
 
@@ -128,29 +139,22 @@ impl crate::turn::Observer for Observer {
     /// different channel, eliminating the possibility that the
     /// transaction would initially fail but succeed on a
     /// retransmission.
-    #[allow(clippy::let_underscore_future)]
-    fn channel_bind(&self, addr: &SessionAddr, name: &str, channel: u16) {
-        log::info!(
-            "channel bind: address={:?}, interface={:?}, username={:?}, channel={}",
+    public void channel_bind(SessionAddr addr, StringView name, uint16 channel)
+    {
+        Log.Info(
+            "channel bind: address={}, interface={}, username={}, channel={}",
             addr.address,
-            addr.interface,
+            addr.sainterface,
             name,
             channel
         );
 
-        #[cfg(feature = "api")]
+        obsEv("channel_bind", ObserverEvData(SessionAddr()
         {
-            crate::api::events::send_with_stream("channel_bind", || {
-                json!({
-                    "session": {
-                        "address": addr.address,
-                        "interface": addr.interface,
-                    },
-                    "username": name,
-                    "channel": channel,
-                })
-            });
-        }
+            address = addr.address,
+            sainterface = addr.sainterface
+        },
+        name) { channel = channel });
     }
 
     /// create permission request
@@ -192,29 +196,23 @@ impl crate::turn::Observer for Observer {
     /// idempotency of CreatePermission requests over UDP using the
     /// "stateless stack approach".  Retransmitted CreatePermission
     /// requests will simply refresh the permissions.
-    #[allow(clippy::let_underscore_future)]
-    fn create_permission(&self, addr: &SessionAddr, name: &str, ports: &[u16]) {
-        log::info!(
-            "create permission: address={:?}, interface={:?}, username={:?}, ports={:?}",
+    public void create_permission(SessionAddr addr, StringView name, Span<uint16> ports)
+    {
+        Log.Info(
+            "create permission: address={}, interface={}, username={}, ports={}",
             addr.address,
-            addr.interface,
+            addr.sainterface,
             name,
             ports
         );
 
-        #[cfg(feature = "api")]
+
+        obsEv("create_permission", ObserverEvData(SessionAddr()
         {
-            crate::api::events::send_with_stream("create_permission", || {
-                json!({
-                    "session": {
-                        "address": addr.address,
-                        "interface": addr.interface,
-                    },
-                    "username": name,
-                    "ports": ports,
-                })
-            });
-        }
+            address = addr.address,
+            sainterface = addr.sainterface
+        },
+        name) { port = ports });
     }
 
     /// refresh request
@@ -256,29 +254,22 @@ impl crate::turn::Observer for Observer {
     /// will cause a 437 (Allocation Mismatch) response if the
     /// allocation has already been deleted, but the client will treat
     /// this as equivalent to a success response (see below).
-    #[allow(clippy::let_underscore_future)]
-    fn refresh(&self, addr: &SessionAddr, name: &str, lifetime: u32) {
-        log::info!(
-            "refresh: address={:?}, interface={:?}, username={:?}, lifetime={}",
+    public void refresh(SessionAddr addr, StringView name, uint32 lifetime)
+    {
+        Log.Info(
+            "refresh: address={}, interface={}, username={}, lifetime={}",
             addr.address,
-            addr.interface,
+            addr.sainterface,
             name,
             lifetime
         );
 
-        #[cfg(feature = "api")]
+        obsEv("refresh", ObserverEvData(SessionAddr()
         {
-            crate::api::events::send_with_stream("refresh", || {
-                json!({
-                    "session": {
-                        "address": addr.address,
-                        "interface": addr.interface,
-                    },
-                    "username": name,
-                    "lifetime": lifetime,
-                })
-            });
-        }
+            address = addr.address,
+            sainterface = addr.sainterface
+        },
+        name) { lifetime = lifetime });
     }
 
     /// session closed
@@ -286,28 +277,22 @@ impl crate::turn::Observer for Observer {
     /// Triggered when the session leaves from the turn. Possible reasons: the
     /// session life cycle has expired, external active deletion, or active
     /// exit of the session.
-    #[allow(clippy::let_underscore_future)]
-    fn closed(&self, addr: &SessionAddr, name: &str) {
-        log::info!(
-            "closed: address={:?}, interface={:?}, username={:?}",
+    public void closed(SessionAddr addr, StringView name)
+    {
+        Log.Info(
+            "closed: address={}, interface={}, username={}",
             addr.address,
-            addr.interface,
+            addr.sainterface,
             name
         );
 
-        #[cfg(feature = "api")]
-        {
-            self.statistics.unregister(&addr);
+        statistics.unregister(addr);
 
-            crate::api::events::send_with_stream("closed", || {
-                json!({
-                    "session": {
-                        "address": addr.address,
-                        "interface": addr.interface,
-                    },
-                    "username": name,
-                })
-            });
-        }
+        obsEv("closed", ObserverEvData(SessionAddr()
+        {
+            address = addr.address,
+            sainterface = addr.sainterface
+        },
+        name));
     }
 }

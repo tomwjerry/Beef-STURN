@@ -5,6 +5,30 @@ using System.Threading;
 
 class RWLock
 {
+    public struct LockIns : IDisposable
+    {
+        private RWLock lck;
+        private bool isWrite;
+
+        public this(RWLock mylck, bool mywrite)
+        {
+            lck = mylck;
+            isWrite = mywrite;
+        }
+
+        public void Dispose()
+        {
+            if (isWrite)
+            {
+                lck.ExitWrite();
+            }
+            else
+            {
+                lck.ExitRead();
+            }
+        }
+    }
+
     private uint32 reads;
     private bool write;
     private bool quit;
@@ -26,32 +50,35 @@ class RWLock
         delete mon;
     }
 
-    public void Read()
+    public LockIns Read()
     {
-        while (write)
+        LockIns curIns = LockIns(this, false);
+        while (write && !quit)
         {
             Thread.Sleep(10);
         }
 
         Interlocked.Increment(ref reads);
+        return curIns;
     }
 
-    public void Write()
+    public LockIns Write()
     {
-        while (reads > 0 || write)
+        LockIns curIns = LockIns(this, true);
+        while (!quit && (reads > 0 || write))
         {
             Interlocked.Fence();
             Thread.Sleep(100);
         }
 
         mon.Enter();
-        if (write)
+        if (!Interlocked.CompareExchange(ref write, false, true) && !quit)
         {
             mon.Exit();
-            Write();
-            return;
+            return Write();
         }
-        write = true;
+        
+        return curIns;
     }
 
     public void ExitRead()

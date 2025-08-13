@@ -1,159 +1,172 @@
-use crate::{
-    config::{Config, Interface},
-    router::Router,
-    statistics::Statistics,
-    turn::{Observer, Service},
-};
+namespace BeefSturn;
 
-use std::net::SocketAddr;
+using System;
+using System.Threading;
+using Beef_Net;
+using Beef_Net.Connection;
+using BeefSturn.Turn;
+using BeefSturn.Turn.Operations;
 
-#[allow(unused)]
-struct ServerStartOptions<T> {
-    bind: SocketAddr,
-    external: SocketAddr,
-    service: Service<T>,
-    router: Router,
-    statistics: Statistics,
+struct ServerStartOptions : IDisposable
+{
+    public (uint16, StringView) bind;
+    public SocketAddress external;
+    public Service service;
+    public Router router;
+    public Statistics statistics;
+
+    public void Dispose()
+    {
+        delete service;
+    }
 }
 
-#[allow(unused)]
-trait Server {
-    async fn start<T>(options: ServerStartOptions<T>) -> Result<(), anyhow::Error>
-    where
-        T: Clone + Observer + 'static;
+interface Server
+{
+    public Result<void, StringView> start(ServerStartOptions options);
 }
 
-#[cfg(feature = "udp")]
-mod udp {
-    use super::{Server as ServerExt, ServerStartOptions};
-    use crate::{
-        statistics::Stats,
-        stun::Transport,
-        turn::{Observer, ResponseMethod, SessionAddr},
-    };
-
-    use std::{io::ErrorKind::ConnectionReset, sync::Arc};
-
-    use tokio::net::UdpSocket;
-
+class SturnUDP : Server
+{
+    UdpConnection socket;
+    bool running;
     /// udp socket process thread.
     ///
     /// read the data packet from the UDP socket and hand
     /// it to the proto for processing, and send the processed
     /// data packet to the specified address.
-    pub struct Server;
 
-    impl ServerExt for Server {
-        async fn start<T>(
-            ServerStartOptions {
-                bind,
-                external,
-                service,
-                router,
-                statistics,
-            }: ServerStartOptions<T>,
-        ) -> Result<(), anyhow::Error>
-        where
-            T: Clone + Observer + 'static,
+    public Result<void, StringView> start(ServerStartOptions options)
+    {
+        socket = new UdpConnection();
+        socket.Listen(options.bind.0, options.bind.1);
+
+        String local_addr = scope String();
+        socket.Iterator.GetLocalAddress(local_addr);
+
+        Router router = options.router;
+        StatisticsReporter reporter = options.statistics.get_reporter(Transport.UDP);
+        Operationer operationer = options.service.get_operationer(options.external, options.external);
+
+        SessionAddr session_addr = SessionAddr()
         {
-            let socket = Arc::new(UdpSocket::bind(bind).await?);
-            let local_addr = socket.local_addr()?;
+            address = options.external,
+            sainterface = options.external
+        };
 
+        running = true;
+
+        Thread recvThread = new Thread(new() =>
+        {
+            uint8[2048] buf = uint8[2048](0,);
+            
+            while (running)
             {
-                let socket = socket.clone();
-                let router = router.clone();
-                let reporter = statistics.get_reporter(Transport::UDP);
-                let mut operationer = service.get_operationer(external, external);
+                // Note: An error will also be reported when the remote host is
+                // shut down, which is not processed yet, but a
+                // warning will be issued.
+                int32 recvCode = socket.Get(&buf, 2048);
+                if (recvCode < 0)
+                {
+                    continue;
+                }
+                else if (!Socket.IsPipeError(recvCode))
+                {
+                    break;
+                }
 
-                let mut session_addr = SessionAddr {
-                    address: external,
-                    interface: external,
-                };
+                session_addr.address = socket.Iterator.PeerAddress;
 
-                tokio::spawn(async move {
-                    let mut buf = vec![0u8; 2048];
+                reporter.send(session_addr, Span<Stats>(new Stats[](Stats.ReceivedBytes(2048), Stats.ReceivedPkts(1))));
 
-                    loop {
-                        // Note: An error will also be reported when the remote host is
-                        // shut down, which is not processed yet, but a
-                        // warning will be issued.
-                        let (size, addr) = match socket.recv_from(&mut buf).await {
-                            Err(e) if e.kind() != ConnectionReset => break,
-                            Ok(s) => s,
-                            _ => continue,
-                        };
+                // The stun message requires at least 4 bytes. (currently the
+                // smallest stun message is channel data,
+                // excluding content)
+                if (buf[0] > 0 || buf[1] > 0 || buf[2] > 0 || buf[3] > 0)
+                {
+                    if (operationer.route(Span<uint8>(&buf, 2048), session_addr.address) case .Ok(let res))
+                    {
+                        SocketAddress target = session_addr.address;
+                        if (res.relay.TryGetValue(let rl))
+                        {
+                            target = rl;
+                        }
+                        if (res.endpoint.TryGetValue(let endpoint))
+                        {
+                            router.send(endpoint, res.method, target, res.bytes);
+                        }
+                        else
+                        {
+                            int32 errcod = 1;
+                            if ((errcod = socket.Send(res.bytes.Ptr, (int32)res.bytes.Length, target)) < 0)
+                            {
+                                if (!Socket.IsPipeError(errcod))
+                                {
+                                    break;
+                                }
+                            }
 
-                        session_addr.address = addr;
+                            reporter
+                                .send(session_addr, Span<Stats>(new Stats[](Stats.SendBytes((uint64)res.bytes.Length), Stats.SendPkts(1))));
 
-                        reporter.send(&session_addr, &[Stats::ReceivedBytes(size), Stats::ReceivedPkts(1)]);
-
-                        // The stun message requires at least 4 bytes. (currently the
-                        // smallest stun message is channel data,
-                        // excluding content)
-                        if size >= 4 {
-                            if let Ok(Some(res)) = operationer.route(&buf[..size], addr) {
-                                let target = res.relay.as_ref().unwrap_or(&addr);
-                                if let Some(ref endpoint) = res.endpoint {
-                                    router.send(endpoint, res.method, target, res.bytes);
-                                } else {
-                                    if let Err(e) = socket.send_to(res.bytes, target).await {
-                                        if e.kind() != ConnectionReset {
-                                            break;
-                                        }
-                                    }
-
-                                    reporter
-                                        .send(&session_addr, &[Stats::SendBytes(res.bytes.len()), Stats::SendPkts(1)]);
-
-                                    if let ResponseMethod::Stun(method) = res.method {
-                                        if method.is_error() {
-                                            reporter.send(&session_addr, &[Stats::ErrorPkts(1)]);
-                                        }
-                                    }
+                            if (res.method case ResponseMethod.Stun(let method))
+                            {
+                                if (method.is_error())
+                                {
+                                    reporter.send(session_addr, Span<Stats>(new Stats[](Stats.ErrorPkts(1))));
                                 }
                             }
                         }
                     }
-                });
+                }
             }
+        });
 
-            tokio::spawn(async move {
-                let mut session_addr = SessionAddr {
-                    address: external,
-                    interface: external,
-                };
+        Thread sendThread = new Thread(new() =>
+	    {
+            SessionAddr session_addr = SessionAddr()
+            {
+                address = options.external,
+                sainterface = options.external
+            };
 
-                let reporter = statistics.get_reporter(Transport::UDP);
-                let mut receiver = router.get_receiver(external);
-                while let Some((bytes, _, addr)) = receiver.recv().await {
-                    session_addr.address = addr;
+            StatisticsReporter reporter = options.statistics.get_reporter(Transport.UDP);
+            Receiver receiver = router.get_receiver(options.external);
+            uint8[2048] buf = uint8[2048](0,);
+            int recvcode = 1;
+            while ((recvcode = receiver.sock.Get(&buf, 2048)) > 0)
+            {
+                String addr = scope String();
+                receiver.sock.GetPeerAddress(addr);
+                session_addr.address = ParseSocketAddress(addr);
+                int32 res = socket.Send(&buf, 2048);
 
-                    if let Err(e) = socket.send_to(&bytes, addr).await {
-                        if e.kind() != ConnectionReset {
-                            break;
-                        }
-                    } else {
-                        reporter.send(&session_addr, &[Stats::SendBytes(bytes.len()), Stats::SendPkts(1)]);
-                    }
+                if (!Socket.IsPipeError(res))
+                {
+                    break;
                 }
 
-                router.remove(&external);
+                if (res >= 0)
+                {
+                    reporter.send(session_addr, Span<Stats>(new Stats[](Stats.SendBytes(2048), Stats.SendPkts(1))));
+                }
+            }
 
-                log::error!("udp server close: interface={:?}", local_addr);
-            });
+            router.remove(options.external);
 
-            log::info!(
-                "turn server listening: bind={}, external={}, transport=UDP",
-                bind,
-                external,
-            );
+            Log.Error("udp server close: interface={}", local_addr);
+        });
 
-            Ok(())
-        }
+        Log.Info(
+            "turn server listening: bind={}, external={}, transport=UDP",
+            options.bind,
+            options.external
+        );
+
+        return .Ok;
     }
 }
 
-#[cfg(feature = "tcp")]
 mod tcp {
     use super::{Server as ServerExt, ServerStartOptions};
     use crate::{

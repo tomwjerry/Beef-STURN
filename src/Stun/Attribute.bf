@@ -4,7 +4,7 @@ using System;
 using System.Collections;
 using Beef_Net;
 
-enum Transport : uint32
+enum StunTransport : uint32
 {
     TCP = 0x06000000,
     UDP = 0x11000000
@@ -111,7 +111,7 @@ enum IpFamily : uint8
 class Addr
 {
     /// encoder SocketAddr as Bytes.
-    public static void encode(SocketAddress addr, Span<uint8> token, List<uint8> bytes, bool is_xor)
+    public static void encode(SocketAddress addr, Span<uint8> token, ByteList bytes, bool is_xor)
     {
         bytes.Add(0);
         SocketAddress xor_addr = is_xor ? xor(addr, token) : addr;
@@ -129,8 +129,7 @@ class Addr
             port = xor_addr.u.IPv6.sin6_port;
         }
 
-        bytes.Add((uint8)(port >> 8));
-        bytes.Add((uint8)(port & 0xFF));
+        bytes.AddU16(port);
 
         if (isIPv4)
         {
@@ -150,7 +149,7 @@ class Addr
             return .Err(StunError.InvalidInput);
         }
 
-        uint16 port = ((uint16)packet[3] << 8) | packet[2];
+        uint16 port = ByteList.ReadU16(packet.Slice(2, 2));
 
         if (IpFamily.TryFrom(packet[1]) case .Ok(let fam))
         {
@@ -428,19 +427,19 @@ enum AttrKind : uint16
 }
 
 /// dyn stun/turn message attribute.
-interface STAttribute
+interface STAttribute<T> where T: STAttribute<T>
 {
     /// current attribute type.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get;
     }
 
     /// write the current attribute to the bytesfer.
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token);
+    public static void encode(T attr, ByteList bytes, Span<uint8> token);
 
     /// convert bytesfer to current attribute.
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token);
+    public static Result<T, STError> decode(Span<uint8> bytes, Span<uint8> token);
 }
 
 /// [RFC8265]: https://datatracker.ietf.org/doc/html/rfc8265
@@ -457,7 +456,7 @@ interface STAttribute
 /// the OpaqueString profile [RFC8265].  A compliant implementation MUST
 /// be able to parse a UTF-8-encoded sequence of 763 or fewer octets to
 /// be compatible with [RFC5389].
-struct UserName : STAttribute, IDisposable
+struct UserName : STAttribute<UserName>, IDisposable
 {
     public String username;
 
@@ -476,18 +475,18 @@ struct UserName : STAttribute, IDisposable
         delete username;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.UserName; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(UserName attr, ByteList bytes, Span<uint8> token)
     {
         UserName attrspec = (UserName)attr;
         bytes.AddRange(Span<char8>(attrspec.username.CStr(), attrspec.username.Length).ToRawData());
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<UserName, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(UserName(StringView((char8*)bytes.Ptr, bytes.Length)));
     }
@@ -499,7 +498,7 @@ struct UserName : STAttribute, IDisposable
 /// the UDP header if the data was been sent directly between the client
 /// and the peer).  If the length of this attribute is not a multiple of
 /// 4, then padding must be added after this attribute.
-struct Data : STAttribute
+struct Data : STAttribute<Data>
 {
     public Span<uint8> data;
 
@@ -513,17 +512,17 @@ struct Data : STAttribute
         data = setData;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.Data; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(Data attr, ByteList bytes, Span<uint8> token)
     {
         bytes.AddRange(((Data)attr).data);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<Data, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Data(bytes));
     }
@@ -547,9 +546,9 @@ struct Data : STAttribute
 /// credentials are being used for authentication.  Presence in certain
 /// error responses indicates that the server wishes the client to use a
 /// long-term credential in that realm for authentication.
-struct Realm : STAttribute, IDisposable
+struct Realm : STAttribute<Realm>, IDisposable
 {
-    String realm;
+    public String realm;
 
     public this()
     {
@@ -566,18 +565,18 @@ struct Realm : STAttribute, IDisposable
         delete realm;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.Realm; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(Realm attr, ByteList bytes, Span<uint8> token)
     {
         Realm attrspec = (Realm)attr;
         bytes.AddRange(Span<char8>(attrspec.realm.CStr(), attrspec.realm.Length).ToRawData());
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<Realm, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Realm(StringView((char8*)bytes.Ptr, bytes.Length)));
     }
@@ -594,9 +593,9 @@ struct Realm : STAttribute, IDisposable
 /// when encoding them and a long as 763 bytes when decoding them).  See
 /// Section 5.4 of [RFC7616] for guidance on selection of nonce values in
 /// a server.
-struct Nonce : STAttribute, IDisposable
+struct Nonce : STAttribute<Nonce>, IDisposable
 {
-    String strVal;
+    public String strVal;
 
     public this()
     {
@@ -613,18 +612,18 @@ struct Nonce : STAttribute, IDisposable
         delete strVal;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.Nonce; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(Nonce attr, ByteList bytes, Span<uint8> token)
     {
         Nonce attrspec = (Nonce)attr;
         bytes.AddRange(Span<char8>(attrspec.strVal.CStr(), attrspec.strVal.Length).ToRawData());
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<Nonce, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Nonce(StringView((char8*)bytes.Ptr, bytes.Length)));
     }
@@ -641,7 +640,7 @@ struct Nonce : STAttribute, IDisposable
 /// [RFC3629] sequence of fewer than 128 characters (which can be as long
 /// as 509 when encoding them and as long as 763 bytes when decoding
 /// them).
-struct Software : STAttribute, IDisposable
+struct Software : STAttribute<Software>, IDisposable
 {
     String strVal;
 
@@ -660,18 +659,18 @@ struct Software : STAttribute, IDisposable
         delete strVal;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.Software; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(Software attr, ByteList bytes, Span<uint8> token)
     {
         Software attrspec = (Software)attr;
         bytes.AddRange(Span<char8>(attrspec.strVal.CStr(), attrspec.strVal.Length).ToRawData());
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<Software, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Software(StringView((char8*)bytes.Ptr, bytes.Length)));
     }
@@ -708,7 +707,7 @@ struct Software : STAttribute, IDisposable
 /// attributes, such as FINGERPRINT and MESSAGE-INTEGRITY-SHA256, appear
 /// after MESSAGE-INTEGRITY.  See also [RFC5769] for examples of such
 /// calculations.
-struct MessageIntegrity : STAttribute
+struct MessageIntegrity : STAttribute<MessageIntegrity>
 {
     public Span<uint8> byteVal;
 
@@ -722,17 +721,17 @@ struct MessageIntegrity : STAttribute
         byteVal = setByteVal;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.MessageIntegrity; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(MessageIntegrity attr, ByteList bytes, Span<uint8> token)
     {
         bytes.AddRange(((MessageIntegrity)attr).byteVal);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<MessageIntegrity, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(MessageIntegrity(bytes));
     }
@@ -744,7 +743,7 @@ struct MessageIntegrity : STAttribute
 /// seen from the TURN server.  (For example, the peer's server-reflexive
 /// transport address if the peer is behind a NAT.)  It is encoded in the
 /// same way as XOR-MAPPED-ADDRESS [RFC5389].
-struct XorPeerAddress : STAttribute
+struct XorPeerAddress : STAttribute<XorPeerAddress>
 {
     public SocketAddress addr;
 
@@ -759,17 +758,17 @@ struct XorPeerAddress : STAttribute
         addr = setAddr;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.XorPeerAddress; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(XorPeerAddress attr, ByteList bytes, Span<uint8> token)
     {
         Addr.encode(((XorPeerAddress)attr).addr, token, bytes, true);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<XorPeerAddress, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(XorPeerAddress(Addr.decode(bytes, token, true)));
     }
@@ -781,7 +780,7 @@ struct XorPeerAddress : STAttribute
 /// specifies the address and port that the server allocated to the
 /// client.  It is encoded in the same way as XOR-MAPPED-ADDRESS
 /// [RFC5389].
-struct XorRelayedAddress : STAttribute
+struct XorRelayedAddress : STAttribute<XorRelayedAddress>
 {
     public SocketAddress addr;
 
@@ -796,17 +795,17 @@ struct XorRelayedAddress : STAttribute
         addr = setAddr;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.XorRelayedAddress; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(XorRelayedAddress attr, ByteList bytes, Span<uint8> token)
     {
         Addr.encode(((XorRelayedAddress)attr).addr, token, bytes, true);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<XorRelayedAddress, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(XorRelayedAddress(Addr.decode(bytes, token, true)));
     }
@@ -845,7 +844,7 @@ struct XorRelayedAddress : STAttribute
 /// misguided attempt to provide a generic Application Layer Gateway
 /// (ALG) function.  Such behavior interferes with the operation of STUN
 /// and also causes failure of STUN's message-integrity checking.
-struct XorMappedAddress : STAttribute
+struct XorMappedAddress : STAttribute<XorMappedAddress>
 {
     public SocketAddress addr;
 
@@ -860,17 +859,17 @@ struct XorMappedAddress : STAttribute
         addr = setAddr;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.XorMappedAddress; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(XorMappedAddress attr, ByteList bytes, Span<uint8> token)
     {
         Addr.encode(((XorMappedAddress)attr).addr, token, bytes, true);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<XorMappedAddress, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(XorMappedAddress(Addr.decode(bytes, token, true)));
     }
@@ -896,7 +895,7 @@ struct XorMappedAddress : STAttribute
 ///
 /// This attribute is used only by servers for achieving backwards
 /// compatibility with [RFC3489] clients.
-struct MappedAddress : STAttribute
+struct MappedAddress : STAttribute<MappedAddress>
 {
     public SocketAddress addr;
 
@@ -911,17 +910,17 @@ struct MappedAddress : STAttribute
         addr = setAddr;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.MappedAddress; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(MappedAddress attr, ByteList bytes, Span<uint8> token)
     {
         Addr.encode(((MappedAddress)attr).addr, token, bytes, true);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<MappedAddress, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(MappedAddress(Addr.decode(bytes, token, false)));
     }
@@ -931,7 +930,7 @@ struct MappedAddress : STAttribute
 /// the source IP address and port the response was sent from.  It is
 /// useful for detecting double NAT configurations.  It is only present
 /// in Binding Responses.
-struct ResponseOrigin : STAttribute
+struct ResponseOrigin : STAttribute<ResponseOrigin>
 {
     public SocketAddress addr;
 
@@ -947,17 +946,17 @@ struct ResponseOrigin : STAttribute
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.ResponseOrigin; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(ResponseOrigin attr, ByteList bytes, Span<uint8> token)
     {
         Addr.encode(((ResponseOrigin)attr).addr, token, bytes, true);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<ResponseOrigin, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(ResponseOrigin(Addr.decode(bytes, token, false)));
     }
@@ -1141,12 +1140,10 @@ struct StunRespError
     }
 
     /// encode the error type as bytes.
-    public void encode(List<uint8> bytes)
+    public void encode(ByteList bytes)
     {
-        bytes.Add(0);
-        bytes.Add(0);
-        bytes.Add((uint8)(code >> 8));
-        bytes.Add((uint8)(code & 0xFF));
+        bytes.AddU16(0);
+        bytes.AddU16(code);
         bytes.AddRange(message.ToRawData());
     }
 
@@ -1162,7 +1159,7 @@ struct StunRespError
             return .Err(StunError.InvalidInput);
         }
 
-        return .Ok(StunRespError((uint16)packet[3] << 8 | packet[2],
+        return .Ok(StunRespError(ByteList.ReadU16(packet.Slice(2, 2)),
             StringView((char8*)packet.Ptr + 4, packet.Length - 4)));
     }
 
@@ -1192,7 +1189,7 @@ struct StunRespError
 /// UTF-8-encoded [RFC3629] sequence of fewer than 128 characters (which
 /// can be as long as 509 bytes when encoding them or 763 bytes when
 /// decoding them).
-struct ErrorCode : STAttribute
+struct ErrorCode : STAttribute<ErrorCode>
 {
     public StunRespError error;
 
@@ -1207,17 +1204,17 @@ struct ErrorCode : STAttribute
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.ErrorCode; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(ErrorCode attr,  ByteList bytes, Span<uint8> token)
     {
         ((ErrorCode)attr).error.encode(bytes);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<ErrorCode, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(ErrorCode(StunRespError.try_from(bytes)));
     }
@@ -1228,7 +1225,7 @@ struct ErrorCode : STAttribute
 /// portion of this attribute is 4-bytes long and consists of a 32-bit
 /// unsigned integral value representing the number of seconds remaining
 /// until expiration.
-struct Lifetime : STAttribute
+struct Lifetime : STAttribute<Lifetime>
 {
     public uint32 lifetime;
 
@@ -1243,24 +1240,20 @@ struct Lifetime : STAttribute
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.Lifetime; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(Lifetime attr, ByteList bytes, Span<uint8> token)
     {
-        uint32 attrval = ((Lifetime)attr).lifetime;
+        bytes.AddU32(((Lifetime)attr).lifetime);
         // Make 4 uint to respresent an uint32
-        bytes.Add((uint8)(attrval >> 24));
-        bytes.Add((uint8)(attrval >> 16));
-        bytes.Add((uint8)(attrval >> 8));
-        bytes.Add((uint8)(attrval & 0xFF));
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<Lifetime, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
-        return .Ok(Lifetime((uint32)bytes[3] << 24 | (uint32)bytes[2] << 16 | (uint16)bytes[1] << 8 | bytes[0]));
+        return .Ok(Lifetime(ByteList.ReadU32(bytes)));
     }
 }
 
@@ -1275,45 +1268,42 @@ struct Lifetime : STAttribute
 ///
 /// The RFFU field MUST be set to zero on transmission and MUST be
 /// ignored on reception.  It is reserved for future uses.
-struct RequestedTransport : STAttribute
+struct RequestedTransport : STAttribute<RequestedTransport>
 {
-    Transport transport;
+    StunTransport transport;
 
     public this()
     {
-        transport = Transport.UDP;
+        transport = StunTransport.UDP;
     }
 
-    public this(Transport setTransport)
+    public this(StunTransport setTransport)
     {
         transport = setTransport;
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.RequestedTransport; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(RequestedTransport attr, ByteList bytes, Span<uint8> token)
     {
         // Make 4 uint to respresent an uint32
-        bytes.Add((uint8)(((RequestedTransport)attr).transport.Underlying >> 24));
-        bytes.Add(0);
-        bytes.Add(0);
-        bytes.Add(0);
+        bytes.AddU32(((RequestedTransport)attr).transport.Underlying >> 24);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<RequestedTransport, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
-        uint32 decodedValue = (uint32)bytes[0];
-        if (decodedValue == Transport.UDP.Underlying)
+        uint32 decodedValue = ByteList.ReadU32(bytes);
+        if (decodedValue == StunTransport.UDP.Underlying)
         {
-            return .Ok(Lifetime(Transport.UDP.Underlying));
+            return .Ok(RequestedTransport(StunTransport.UDP));
         }
-        else if (decodedValue == Transport.TCP.Underlying)
+        else if (decodedValue == StunTransport.TCP.Underlying)
         {
-            return .Ok(Lifetime(Transport.TCP.Underlying));
+            return .Ok(RequestedTransport(StunTransport.TCP));
         }
 
         return .Err(StunError.InvalidInput);
@@ -1354,7 +1344,7 @@ struct RequestedTransport : STAttribute
 /// integrity value before the CRC is computed, since the CRC is done
 /// over the value of the MESSAGE-INTEGRITY and MESSAGE-INTEGRITY-SHA256
 /// attributes as well.
-struct Fingerprint : STAttribute
+struct Fingerprint : STAttribute<Fingerprint>
 {
     public uint32 value;
 
@@ -1369,24 +1359,20 @@ struct Fingerprint : STAttribute
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.Fingerprint; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(Fingerprint attr, ByteList bytes, Span<uint8> token)
     {
-        uint32 value = ((Fingerprint)attr).value;
+        bytes.AddU32(((Fingerprint)attr).value);
         // Make 4 uint to respresent an uint32
-        bytes.Add((uint8)(value >> 24));
-        bytes.Add((uint8)(value >> 16));
-        bytes.Add((uint8)(value >> 8));
-        bytes.Add((uint8)(value & 0xFF));
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<Fingerprint, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
-        return .Ok(Fingerprint((uint32)bytes[3] << 24 | (uint32)bytes[2] << 16 | (uint16)bytes[1] << 8 | bytes[0]));
+        return .Ok(Fingerprint(ByteList.ReadU32(bytes)));
     }
 }
 
@@ -1395,7 +1381,7 @@ struct Fingerprint : STAttribute
 /// 16-bit unsigned integer followed by a two-octet RFFU (Reserved For
 /// Future Use) field, which MUST be set to 0 on transmission and MUST be
 /// ignored on reception.
-struct ChannelNumber : STAttribute
+struct ChannelNumber : STAttribute<ChannelNumber>
 {
     public uint16 number;
 
@@ -1410,21 +1396,19 @@ struct ChannelNumber : STAttribute
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.ChannelNumber; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(ChannelNumber attr, ByteList bytes, Span<uint8> token)
     {
-        uint16 value = ((ChannelNumber)attr).number;
-        bytes.Add((uint8)(value >> 8));
-        bytes.Add((uint8)(value & 0xFF));
+        bytes.AddU16(((ChannelNumber)attr).number);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<ChannelNumber, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
-        return .Ok(ChannelNumber((uint16)bytes[1] << 8 | bytes[0]));
+        return .Ok(ChannelNumber(ByteList.ReadU16(bytes)));
     }
 }
 
@@ -1437,7 +1421,7 @@ struct ChannelNumber : STAttribute
 /// requests, for all streams, within an ICE session, unless it has
 /// received a 487 response, in which case it MUST change the number.  
 /// The agent MAY change the number when an ICE restart occurs.
-struct IceControlling : STAttribute
+struct IceControlling : STAttribute<IceControlling>
 {
     public uint64 value;
 
@@ -1452,32 +1436,19 @@ struct IceControlling : STAttribute
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.IceControlling; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(IceControlling attr, ByteList bytes, Span<uint8> token)
     {
-        uint64 value = ((IceControlling)attr).value;
-
-        // Make 8 uint to respresent an uint64
-        bytes.Add((uint8)(value >> 56));
-        bytes.Add((uint8)(value >> 48));
-        bytes.Add((uint8)(value >> 40));
-        bytes.Add((uint8)(value >> 32));
-        bytes.Add((uint8)(value >> 24));
-        bytes.Add((uint8)(value >> 16));
-        bytes.Add((uint8)(value >> 8));
-        bytes.Add((uint8)(value & 0xFF));
+        bytes.AddU64(((IceControlling)attr).value);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<IceControlling, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
-        return .Ok(IceControlling((uint64)bytes[7] << 56 | (uint64)bytes[6] << 48 |
-            (uint64)bytes[5] << 40 | (uint64)bytes[4] << 32 |
-            (uint32)bytes[3] << 24 | (uint32)bytes[2] << 16 |
-            (uint16)bytes[1] << 8 | bytes[0]));
+        return .Ok(IceControlling(ByteList.ReadU64(bytes)));
     }
 }
 
@@ -1485,22 +1456,22 @@ struct IceControlling : STAttribute
 /// resulting from this check will be used for transmission of data.  The
 /// attribute has no content (the Length field of the attribute is zero);
 /// it serves as a flag.  It has an attribute value of 0x0025..
-struct UseCandidate : STAttribute
+struct UseCandidate : STAttribute<UseCandidate>
 {
     public this() {}
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.UseCandidate; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(UseCandidate attr, ByteList bytes, Span<uint8> token)
     {
         // No content, just a flag
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<UseCandidate, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(UseCandidate());
     }
@@ -1515,7 +1486,7 @@ struct UseCandidate : STAttribute
 /// all Binding requests, for all streams, within an ICE session, unless
 /// it has received a 487 response, in which case it MUST change the
 /// number. The agent MAY change the number when an ICE restart occurs.
-struct IceControlled : STAttribute
+struct IceControlled : STAttribute<IceControlled>
 {
     public uint64 value;
 
@@ -1530,32 +1501,19 @@ struct IceControlled : STAttribute
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.IceControlled; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(IceControlled attr, ByteList bytes, Span<uint8> token)
     {
-        uint64 value = ((IceControlled)attr).value;
-
-        // Make 8 uint to respresent an uint64
-        bytes.Add((uint8)(value >> 56));
-        bytes.Add((uint8)(value >> 48));
-        bytes.Add((uint8)(value >> 40));
-        bytes.Add((uint8)(value >> 32));
-        bytes.Add((uint8)(value >> 24));
-        bytes.Add((uint8)(value >> 16));
-        bytes.Add((uint8)(value >> 8));
-        bytes.Add((uint8)(value & 0xFF));
+        bytes.AddU64(((IceControlled)attr).value);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<IceControlled, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
-        return .Ok(IceControlled((uint64)bytes[7] << 56 | (uint64)bytes[6] << 48 |
-            (uint64)bytes[5] << 40 | (uint64)bytes[4] << 32 |
-            (uint32)bytes[3] << 24 | (uint32)bytes[2] << 16 |
-            (uint16)bytes[1] << 8 | bytes[0]));
+        return .Ok(IceControlled(ByteList.ReadU64(bytes)));
     }
 }
 
@@ -1563,7 +1521,7 @@ struct IceControlled : STAttribute
 /// associated with a peer-reflexive candidate, if one will be discovered
 /// by this check.  It is a 32-bit unsigned integer and has an attribute
 /// value of 0x0024.
-struct Priority : STAttribute
+struct Priority : STAttribute<Priority>
 {
     public uint32 value;
 
@@ -1578,23 +1536,17 @@ struct Priority : STAttribute
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.Priority; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(Priority attr, ByteList bytes, Span<uint8> token)
     {
-        uint32 value = ((Priority)attr).value;
-
-        // Make 4 uint to respresent an uint32
-        bytes.Add((uint8)(value >> 24));
-        bytes.Add((uint8)(value >> 16));
-        bytes.Add((uint8)(value >> 8));
-        bytes.Add((uint8)(value & 0xFF));
+        bytes.AddU32(((Priority)attr).value);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<Priority, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(Priority((uint32)bytes[3] << 24 | (uint32)bytes[2] << 16 | (uint16)bytes[1] << 8 | bytes[0]));
     }
@@ -1608,7 +1560,7 @@ struct Priority : STAttribute
 /// allocation.
 ///
 /// The attribute value is 8 bytes and contains the token value.
-struct ReservationToken : STAttribute
+struct ReservationToken : STAttribute<ReservationToken>
 {
     public uint64 value;
 
@@ -1623,31 +1575,19 @@ struct ReservationToken : STAttribute
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.ReservationToken; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(ReservationToken attr, ByteList bytes, Span<uint8> token)
     {
-        uint64 value = ((ReservationToken)attr).value;
-        // Make 8 uint to respresent an uint64
-        bytes.Add((uint8)(value >> 56));
-        bytes.Add((uint8)(value >> 48));
-        bytes.Add((uint8)(value >> 40));
-        bytes.Add((uint8)(value >> 32));
-        bytes.Add((uint8)(value >> 24));
-        bytes.Add((uint8)(value >> 16));
-        bytes.Add((uint8)(value >> 8));
-        bytes.Add((uint8)(value & 0xFF));
+        bytes.AddU64(((ReservationToken)attr).value);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<ReservationToken, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
-        return .Ok(ReservationToken((uint64)bytes[7] << 56 | (uint64)bytes[6] << 48 |
-            (uint64)bytes[5] << 40 | (uint64)bytes[4] << 32 |
-            (uint32)bytes[3] << 24 | (uint32)bytes[2] << 16 |
-            (uint16)bytes[1] << 8 | bytes[0]));
+        return .Ok(ReservationToken(ByteList.ReadU64(bytes)));
     }
 }
 
@@ -1655,7 +1595,7 @@ struct ReservationToken : STAttribute
 /// transport address be even, and (optionally) that the server reserve the
 /// next-higher port number.  The value portion of this attribute is 1 byte
 /// long.
-struct EvenPort : STAttribute
+struct EvenPort : STAttribute<EvenPort>
 {
     public bool value;
 
@@ -1670,17 +1610,17 @@ struct EvenPort : STAttribute
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.EvenPort; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(EvenPort attr, ByteList bytes, Span<uint8> token)
     {
         bytes.Add(((EvenPort)attr).value ? 128 : 0);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<EvenPort, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(EvenPort(bytes[0] == 128));
     }
@@ -1691,7 +1631,7 @@ struct EvenPort : STAttribute
 /// format of the REQUESTED-ADDRESS-FAMILY attribute. Note that TURN attributes
 /// are TLV (Type-Length-Value) encoded, with a 16-bit type, a 16-bit length,
 /// and a variable-length value.
-struct RequestedAddressFamily : STAttribute
+struct RequestedAddressFamily : STAttribute<RequestedAddressFamily>
 {
     public IpFamily ipFam;
 
@@ -1705,17 +1645,17 @@ struct RequestedAddressFamily : STAttribute
         ipFam = setValue;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.RequestedAddressFamily; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(RequestedAddressFamily attr, ByteList bytes, Span<uint8> token)
     {
         bytes.Add(((RequestedAddressFamily)attr).ipFam.Underlying);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<RequestedAddressFamily, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         if (IpFamily.TryFrom(bytes[0]) case .Ok(let family))
         {
@@ -1733,7 +1673,7 @@ struct RequestedAddressFamily : STAttribute
 /// REQUESTED-ADDRESS-FAMILY attribute; The ADDITIONAL-ADDRESS-FAMILY attribute
 /// MAY be present in the Allocate request. The attribute value of 0x02 (IPv6
 /// address) is the only valid value in Allocate request.
-struct AdditionalAddressFamily : STAttribute
+struct AdditionalAddressFamily : STAttribute<AdditionalAddressFamily>
 {
     public IpFamily ipFam;
 
@@ -1747,17 +1687,17 @@ struct AdditionalAddressFamily : STAttribute
         ipFam = setValue;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.AdditionalAddressFamily; }
     }
 
-     public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+     public static void encode(AdditionalAddressFamily attr, ByteList bytes, Span<uint8> token)
     {
         bytes.Add(((AdditionalAddressFamily)attr).ipFam.Underlying);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<AdditionalAddressFamily, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         if (IpFamily.TryFrom(bytes[0]) case .Ok(let family))
         {
@@ -1775,24 +1715,24 @@ struct AdditionalAddressFamily : STAttribute
 /// onward to the peer and for determining the server capability in Allocate
 /// requests. This attribute has no value part, and thus, the attribute length
 /// field is 0.
-struct DontFragment : STAttribute
+struct DontFragment : STAttribute<DontFragment>
 {
     public this()
     {
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.DontFragment; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(DontFragment attr, ByteList bytes, Span<uint8> token)
     {
         // No content, just a flag
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<DontFragment, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         return .Ok(DontFragment());
     }
@@ -1806,7 +1746,7 @@ struct DontFragment : STAttribute
 /// token is opaque to the client, and the client MUST NOT examine the token.
 /// The ACCESS-TOKEN attribute is a comprehension-required attribute (see
 /// Section 15 from [RFC5389]).
-struct AccessToken : STAttribute, IDisposable
+struct AccessToken : STAttribute<AccessToken>, IDisposable
 {
     public String nonce;
     public String mac_key;
@@ -1835,52 +1775,40 @@ struct AccessToken : STAttribute, IDisposable
         delete mac_key;
     }
 
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.AccessToken; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(AccessToken attr, ByteList bytes, Span<uint8> token)
     {
         AccessToken acattr = (AccessToken)attr;
 
         // nonce_length:  Length of the nonce field.  The length of nonce for AEAD
         // algorithms is explained in [RFC5116].
-        bytes.Add((uint8)(acattr.nonce.Length >> 8));
-        bytes.Add((uint8)(acattr.nonce.Length & 0xFF));
+        bytes.AddU16((uint16)acattr.nonce.Length);
         bytes.AddRange(Span<char8>(acattr.nonce.CStr(), acattr.nonce.Length).ToRawData());
 
         // key_length:  Length of the session key in octets.  The key length of 160 bits
         // MUST be supported (i.e., only the 160-bit key is used by HMAC-SHA-1 for
         // message integrity of STUN messages).  The key length facilitates the hash
         // agility plan discussed in Section 16.3 of [RFC5389].
-        bytes.Add((uint8)(acattr.mac_key.Length >> 8));
-        bytes.Add((uint8)(acattr.mac_key.Length & 0xFF));
+        bytes.AddU16((uint16)acattr.mac_key.Length);
         bytes.AddRange(Span<char8>(acattr.mac_key.CStr(), acattr.mac_key.Length).ToRawData());
 
         // timestamp:  64-bit unsigned integer field containing a timestamp.
-        bytes.Add((uint8)(acattr.timestamp >> 56));
-        bytes.Add((uint8)(acattr.timestamp >> 48));
-        bytes.Add((uint8)(acattr.timestamp >> 40));
-        bytes.Add((uint8)(acattr.timestamp >> 32));
-        bytes.Add((uint8)(acattr.timestamp >> 24));
-        bytes.Add((uint8)(acattr.timestamp >> 16));
-        bytes.Add((uint8)(acattr.timestamp >> 8));
-        bytes.Add((uint8)(acattr.timestamp & 0xFF));
+        bytes.AddU64(acattr.timestamp);
 
         // lifetime:  The lifetime of the access token, in seconds.
-        bytes.Add((uint8)(acattr.lifetime >> 24));
-        bytes.Add((uint8)(acattr.lifetime >> 16));
-        bytes.Add((uint8)(acattr.lifetime >> 8));
-        bytes.Add((uint8)(acattr.lifetime & 0xFF));
+        bytes.AddU32((uint32)acattr.lifetime);
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<AccessToken, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         // nonce_length:  Length of the nonce field.  The length of nonce for AEAD
         // algorithms is explained in [RFC5116].
         int offset = 0;
-        uint16 nonce_length = (uint16)bytes[offset + 1] << 8 | bytes[offset];
+        uint16 nonce_length = ByteList.ReadU16(bytes, offset);
         if (nonce_length >= bytes.Length)
         {
             return .Err(StunError.InvalidInput);
@@ -1895,7 +1823,7 @@ struct AccessToken : STAttribute, IDisposable
         // MUST be supported (i.e., only the 160-bit key is used by HMAC-SHA-1 for
         // message integrity of STUN messages).  The key length facilitates the hash
         // agility plan discussed in Section 16.3 of [RFC5389].
-        uint16 key_length = (uint16)bytes[offset + 1] << 8 | bytes[offset];
+        uint16 key_length = ByteList.ReadU16(bytes, offset);
         if (key_length >= bytes.Length)
         {
             return .Err(StunError.InvalidInput);
@@ -1915,14 +1843,7 @@ struct AccessToken : STAttribute, IDisposable
         // January 1, 1970, 00:00 UTC, by using a fixed-point format.  In this format, the integer number of seconds
         // is contained in the first 48 bits of the field, and the remaining 16 bits indicate the number of 1/64000
         // fractions of a second (Native format - Unix).
-        uint64 timestamp = (uint64)bytes[offset + 7] << 56 |
-            (uint64)bytes[offset + 6] << 48 |
-            (uint64)bytes[offset + 5] << 40 |
-            (uint64)bytes[offset + 4] << 32 |
-            (uint32)bytes[offset + 3] << 24 |
-            (uint32)bytes[offset + 2] << 16 |
-            (uint16)bytes[offset + 1] << 8 |
-            (uint8)bytes[offset];
+        uint64 timestamp = ByteList.ReadU64(bytes, offset);
 
         offset += 8;
 
@@ -1930,10 +1851,7 @@ struct AccessToken : STAttribute, IDisposable
         // The lifetime value MUST be greater than or equal to the 'expires_in' parameter defined in Section 4.2.2
         // of [RFC6749], otherwise the resource server could revoke the token, but the client would assume that the
         // token has not expired and would not refresh the token.
-        uint32 lifetime = (uint32)bytes[offset + 3] << 24 |
-            (uint32)bytes[offset + 2] << 16 |
-            (uint16)bytes[offset + 1] << 8 |
-            (uint8)bytes[offset];
+        uint32 lifetime = ByteList.ReadU32(bytes, offset);
 
         return .Ok(AccessToken(nnonce, nmac_key, timestamp, lifetime));
     }
@@ -1954,7 +1872,7 @@ struct AccessToken : STAttribute, IDisposable
 /// comprehend THIRD-PARTY-AUTHORIZATION, it MUST ensure that third-party
 /// authorization takes precedence over first-party authentication (as
 /// explained in Section 10 of [RFC5389]).
-struct ThirdPartyAuathorization : STAttribute, IDisposable
+struct ThirdPartyAuathorization : STAttribute<ThirdPartyAuathorization>, IDisposable
 {
     public String server_name;
 
@@ -1974,19 +1892,19 @@ struct ThirdPartyAuathorization : STAttribute, IDisposable
     }
 
     /// The KIND of this attribute.
-    public AttrKind KIND
+    public static AttrKind KIND
     {
         get { return AttrKind.ThirdPartyAuthorization; }
     }
 
-    public static void encode(STAttribute attr, List<uint8> bytes, Span<uint8> token)
+    public static void encode(ThirdPartyAuathorization attr, ByteList bytes, Span<uint8> token)
     {
         // Encode the server name as UTF-8
         String server_name = ((ThirdPartyAuathorization)attr).server_name;
         bytes.AddRange(Span<char8>(server_name.CStr(), server_name.Length).ToRawData());
     }
 
-    public static Result<STAttribute, STError> decode(Span<uint8> bytes, Span<uint8> token)
+    public static Result<ThirdPartyAuathorization, STError> decode(Span<uint8> bytes, Span<uint8> token)
     {
         // Decode the server name from UTF-8
         String serverName = scope String((char8*)bytes.Ptr, bytes.Length);

@@ -277,12 +277,12 @@ struct Attributes : IDisposable
     ///
     /// Normally a stun message can have multiple attributes with the same name,
     /// and this function will all the values of the current attribute.
-    public Span<uint64[2]>.Enumerator get_all(AttrKind kind)
+    public Span<uint64[2]>.Enumerator get_all<T>() where T : STAttribute<T>
     {
         List<uint64[2]> filteredAttrs = scope List<uint64[2]>();
         for (let li in attrList)
         {
-            if (li.0 == kind)
+            if (li.0 == T.KIND)
             {
                 filteredAttrs.Add(li.1);
             }

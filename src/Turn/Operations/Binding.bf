@@ -1,10 +1,7 @@
-use super::{Observer, Requet, Response, ResponseMethod};
+namespace BeefSturn.Turn.Operations;
 
-use crate::stun::{
-    MessageEncoder, MessageRef,
-    attribute::{MappedAddress, ResponseOrigin, Software, XorMappedAddress},
-    method::BINDING_RESPONSE,
-};
+using System;
+using BeefSturn.Stun;
 
 /// process binding request
 ///
@@ -28,20 +25,27 @@ use crate::stun::{
 /// attribute within the body of the STUN response will remain untouched.
 /// In this way, the client can learn its reflexive transport address
 /// allocated by the outermost NAT with respect to the STUN server.
-pub fn process<'a, T: Observer>(req: Requet<'_, 'a, T, MessageRef<'_>>) -> Option<Response<'a>> {
+class Binding
+{
+    public static Result<Response, StunError> process(Request req)
     {
-        let mut message = MessageEncoder::extend(BINDING_RESPONSE, &req.message, req.bytes);
-        message.append::<XorMappedAddress>(req.address.address);
-        message.append::<MappedAddress>(req.address.address);
-        message.append::<ResponseOrigin>(req.service.interface);
-        message.append::<Software>(&req.service.software);
-        message.flush(None).ok()?;
+        MessageEncoder message = scope MessageEncoder();
+        MessageEncoder.extend(.BINDING_RESPONSE, req.message, req.bytes, message);
+        message.appendAttr<XorMappedAddress>(XorMappedAddress(req.address.address));
+        message.appendAttr<MappedAddress>(MappedAddress(req.address.address));
+        message.appendAttr<ResponseOrigin>(ResponseOrigin(req.service.sainterface));
+        message.appendAttr<Software>(Software(req.service.software));
+        if (message.flush(null) case .Err(let err))
+        {
+            return .Err(err);
+        }
+    
+        return Response()
+        {
+            method = ResponseMethod.Stun(.BINDING_RESPONSE),
+            bytes = req.bytes,
+            endpoint = null,
+            relay = null
+        };
     }
-
-    Some(Response {
-        method: ResponseMethod::Stun(BINDING_RESPONSE),
-        bytes: req.bytes,
-        endpoint: None,
-        relay: None,
-    })
 }

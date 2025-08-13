@@ -167,6 +167,16 @@ struct Log
     ///
     /// An enum representing the available verbosity levels of the logger.
     public LogLevel level;
+
+    public static void Info(StringView msg, params Object[] msgParams)
+    {
+        Console.WriteLine(msg, msgParams);
+    }
+
+    public static void Error(StringView msg, params Object[] msgParams)
+    {
+        Console.WriteLine(msg, msgParams);
+    }
 }
 
 struct Auth : IDisposable

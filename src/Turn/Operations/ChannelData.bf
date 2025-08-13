@@ -1,6 +1,7 @@
-use super::{Observer, Requet, Response, ResponseMethod};
+namespace BeefSturn.Turn.Operations;
 
-use crate::stun::ChannelData;
+using System;
+using BeefSturn.Stun;
 
 /// process channel data
 ///
@@ -30,20 +31,27 @@ use crate::stun::ChannelData;
 /// the Length field in the ChannelData message is 0, then there will be
 /// no data in the UDP datagram, but the UDP datagram is still formed and
 /// sent [(Section 4.1 of [RFC6263])](https://tools.ietf.org/html/rfc6263#section-4.1).
-pub fn process<'a, T: Observer>(bytes: &'a [u8], req: Requet<'_, 'a, T, ChannelData<'a>>) -> Option<Response<'a>> {
-    let relay = req
-        .service
-        .sessions
-        .get_channel_relay_address(&req.address, req.message.number)?;
+class TOChannelData
+{
+    public static Result<Response, StunError> process(Span<uint8> bytes, Request req)
+    {
+        Endpoint? relay = req.service.sessions
+            .get_channel_relay_address(req.address, req.chanData.number);
+        Response resp = Response();
+        if (!relay.HasValue || relay.Value.endpoint != req.service.endpoint)
+        {
+            resp.endpoint = null;
+            resp.relay = null;
+        }
+        else
+        {
+            resp.endpoint = relay.Value.endpoint;
+            resp.relay = relay.Value.address;
+        }
 
-    Some(Response {
-        method: ResponseMethod::ChannelData,
-        endpoint: if req.service.endpoint != relay.endpoint {
-            Some(relay.endpoint)
-        } else {
-            None
-        },
-        relay: Some(relay.address),
-        bytes,
-    })
+        resp.method = ResponseMethod.ChannelData;
+        resp.bytes = bytes;
+
+        return resp;
+    }
 }

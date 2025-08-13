@@ -164,12 +164,41 @@ class State
 
     public this()
     {
-        sessions = new Dictionary<SessionAddr, TurnSession>(PortAllocatePools.capacity);
-        port_mapping_table = new Dictionary<uint16, SessionAddr>(PortAllocatePools.capacity);
-        address_nonce_table = new Dictionary<SessionAddr, (StringView, uint64)>(PortAllocatePools.capacity);
-        port_mapping_table = new Dictionary<uint16, SessionAddr>(PortAllocatePools.capacity);
-        port_relay_table = new Dictionary<SessionAddr, Dictionary<uint16, Endpoint>>(PortAllocatePools.capacity);
-        channel_relay_table = new Dictionary<SessionAddr, Dictionary<uint16, Endpoint>>(PortAllocatePools.capacity);
+        sessions = new Dictionary<SessionAddr, TurnSession>((int32)PortAllocatePools.capacity());
+        port_mapping_table = new Dictionary<uint16, SessionAddr>((int32)PortAllocatePools.capacity());
+        address_nonce_table = new Dictionary<SessionAddr, (StringView, uint64)>((int32)PortAllocatePools.capacity());
+        port_mapping_table = new Dictionary<uint16, SessionAddr>((int32)PortAllocatePools.capacity());
+        port_relay_table = new Dictionary<SessionAddr, Dictionary<uint16, Endpoint>>((int32)PortAllocatePools.capacity());
+        channel_relay_table = new Dictionary<SessionAddr, Dictionary<uint16, Endpoint>>((int32)PortAllocatePools.capacity());
+
+        sessionWrite = new RWLock();
+        papAccess = new Monitor();
+        pmtWrite = new RWLock();
+        antWrite = new RWLock();
+        prtWrite = new RWLock();
+        crtWrite = new RWLock();
+    }
+
+    public this(State copyst)
+    {
+        sessions = new Dictionary<SessionAddr, TurnSession>(copyst.sessions.GetEnumerator());
+        port_mapping_table = new Dictionary<uint16, SessionAddr>(copyst.port_mapping_table.GetEnumerator());
+        address_nonce_table = new Dictionary<SessionAddr, (StringView, uint64)>(copyst.address_nonce_table.GetEnumerator());
+        port_mapping_table = new Dictionary<uint16, SessionAddr>(copyst.port_mapping_table.GetEnumerator());
+        port_relay_table = new Dictionary<SessionAddr, Dictionary<uint16, Endpoint>>((int32)PortAllocatePools.capacity());
+        channel_relay_table = new Dictionary<SessionAddr, Dictionary<uint16, Endpoint>>((int32)PortAllocatePools.capacity());
+
+        for (let pr in copyst.port_relay_table)
+        {
+            port_relay_table.Add(pr.key, new Dictionary<uint16, Endpoint>(pr.value.GetEnumerator()));
+        }
+
+        for (let cr in copyst.channel_relay_table)
+        {
+            channel_relay_table.Add(cr.key, new Dictionary<uint16, Endpoint>(cr.value.GetEnumerator()));
+        }
+
+        port_allocate_pool = copyst.port_allocate_pool;
 
         sessionWrite = new RWLock();
         papAccess = new Monitor();
@@ -335,6 +364,15 @@ class Sessions
     public bool running;
     public Random rnd;
 
+    public this(Sessions copysess)
+    {
+        this.timer = copysess.timer;
+        this.state = new State(copysess.state);
+        this.observer = new Observer(copysess.observer);
+        running = true;
+        rnd = new Random();
+    }
+
     public this(Observer observer)
     {
         state = new State();
@@ -345,7 +383,7 @@ class Sessions
 
         // This is a background thread that silently handles expiring sessions and
         // cleans up session information when it expires.
-        Thread t = scope Thread(new() =>
+        Thread t = new Thread(new() =>
         {
             List<SessionAddr> address = scope List<SessionAddr>(255);
 
@@ -402,6 +440,7 @@ class Sessions
 
     public ~this()
     {
+        delete observer;
         delete state;
         delete rnd;
     }
@@ -427,7 +466,7 @@ class Sessions
             state.addToPortPool(port);
        
             // Notifies that the external session has been closed.
-            observer.closed(k, tmpses.auth.username);
+            observer.closed(add, tmpses.auth.username);
         }
 
         state.sessionWrite.ExitWrite();
@@ -521,7 +560,7 @@ class Sessions
     public uint64 allocated()
     {
         state.papAccess.Enter();
-        uint64 ports = state.getPortAllocatePool().Length;
+        uint64 ports = state.getPortAllocatePool().len();
         state.papAccess.Exit();
         return ports;
     }
@@ -546,7 +585,7 @@ class Sessions
 
         // Records the port assigned to the current session and resets the alive time.
         state.papAccess.Enter();
-        uint8 port = state.getPortAllocatePool().alloc();
+        uint16 port = state.getPortAllocatePool().alloc();
         state.papAccess.Exit();
         ses.expires = timer.get() + 600;
         ses.allocate.port = port;
@@ -823,11 +862,11 @@ struct PortAllocatePools : IDisposable
     /// compute bucket last bit max offset.
     public uint32 bit_len()
     {
-        return (uint32)Math.Ceiling((capacity() % 64.0);
+        return (uint32)Math.Ceiling(capacity() % 64.0);
     }
 
     /// get pools capacity.
-    public uint32 capacity()
+    public static uint32 capacity()
     {
         return 65535 - 49152;
     }
@@ -865,7 +904,7 @@ struct PortAllocatePools : IDisposable
         }
         else
         {
-            start = rnd.NextU64() % peak;
+            start = rnd.NextI32() % peak;
         }
 
         // When the partition lookup has gone through the entire partition list, the

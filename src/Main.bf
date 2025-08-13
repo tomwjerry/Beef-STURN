@@ -1,22 +1,13 @@
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+namespace BeefSturn;
 
-use std::sync::Arc;
+using System;
 
-use turn_server::config::Config;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let config = Arc::new(Config::load()?);
-    simple_logger::init_with_level(config.log.level.as_level())?;
-
-    if config.turn.interfaces.is_empty() {
-        log::warn!(
-            "No interfaces are bound, no features are enabled, it's just a program without any functionality :-)"
-        );
-
-        return Ok(());
+static class Main
+{
+    static void Main(String[] args)
+    {
+        Config config = Config();
+    
+        turn_server.startup(config);
     }
-
-    turn_server::startup(config).await
 }

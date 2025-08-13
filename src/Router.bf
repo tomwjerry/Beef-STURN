@@ -1,53 +1,51 @@
-use std::{net::SocketAddr, sync::Arc};
+namespace BeefSturn;
 
-use ahash::AHashMap;
-use parking_lot::RwLock;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
+using System;
+using System.Collections;
+using Beef_Net;
+using Beef_Net.Connection;
+using BeefSturn.Turn.Operations;
 
-use crate::turn::ResponseMethod;
-
-type Receiver = UnboundedSender<(Vec<u8>, ResponseMethod, SocketAddr)>;
-
-/// Handles packet forwarding between transport protocols.
-#[derive(Clone)]
-pub struct Router(Arc<RwLock<AHashMap<SocketAddr, Receiver>>>);
-
-impl Default for Router {
-    fn default() -> Self {
-        Self(Arc::new(RwLock::new(AHashMap::with_capacity(1024))))
-    }
+struct Receiver
+{
+    public Span<uint8> data;
+    public ResponseMethod respMethod;
+    public Socket sock;
 }
 
-impl Router {
+/// Handles packet forwarding between transport protocols.
+struct Router : IDisposable
+{
+    Dictionary<SocketAddress, Receiver> socketRecv;
+    RWLock routerLock;
+
+    public this()
+    {
+        socketRecv = new Dictionary<SocketAddress, Receiver>(1024);
+        routerLock = new RWLock();
+    }
+
+    public void Dispose()
+    {
+        delete routerLock;
+        delete socketRecv;
+    }
+
     /// Get the socket reader for the route.
     ///
     /// Each transport protocol is layered according to its own socket, and
     /// the data forwarded to this socket can be obtained by routing.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::net::SocketAddr;
-    /// use turn_server::router::*;
-    /// use turn_server::turn::ResponseMethod;
-    ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let addr = "127.0.0.1:8080".parse::<SocketAddr>().unwrap();
-    ///     let router = Router::default();
-    ///     let mut receiver = router.get_receiver(addr);
-    ///
-    ///     router.send(&addr, ResponseMethod::ChannelData, &addr, &[1, 2, 3]);
-    ///     let ret = receiver.recv().await.unwrap();
-    ///     assert_eq!(ret.0, vec![1, 2, 3]);
-    ///     assert_eq!(ret.1, ResponseMethod::ChannelData);
-    ///     assert_eq!(ret.2, addr);
-    /// }
-    /// ```
-    pub fn get_receiver(&self, interface: SocketAddr) -> UnboundedReceiver<(Vec<u8>, ResponseMethod, SocketAddr)> {
-        let (sender, receiver) = unbounded_channel();
-        self.0.write().insert(interface, sender);
-        receiver
+    public Receiver get_receiver(SocketAddress sainterface)
+    {
+        using (routerLock.Write())
+        {
+            if (!socketRecv.ContainsKey(sainterface))
+            {
+                socketRecv.Add(sainterface, Receiver());
+            }
+        }
+
+        return socketRecv.GetValue(sainterface);
     }
 
     /// Send data to router.
@@ -56,69 +54,34 @@ impl Router {
     /// is forwarded to the corresponding socket. However, it should be noted
     /// that calling this function will not notify whether the socket exists.
     /// If it does not exist, the data will be discarded by default.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::net::SocketAddr;
-    /// use turn_server::router::*;
-    /// use turn_server::turn::ResponseMethod;
-    ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let addr = "127.0.0.1:8080".parse::<SocketAddr>().unwrap();
-    ///     let router = Router::default();
-    ///     let mut receiver = router.get_receiver(addr);
-    ///
-    ///     router.send(&addr, ResponseMethod::ChannelData, &addr, &[1, 2, 3]);
-    ///     let ret = receiver.recv().await.unwrap();
-    ///     assert_eq!(ret.0, vec![1, 2, 3]);
-    ///     assert_eq!(ret.1, ResponseMethod::ChannelData);
-    ///     assert_eq!(ret.2, addr);
-    /// }
-    /// ```
-    pub fn send(&self, interface: &SocketAddr, method: ResponseMethod, addr: &SocketAddr, data: &[u8]) {
-        let mut is_destroy = false;
+    public void send(SocketAddress sainterface, ResponseMethod method, SocketAddress toWhere, Span<uint8> data)
+    {
+        bool is_destroy = false;
 
+        using (routerLock.Read())
         {
-            if let Some(sender) = self.0.read().get(interface) {
-                if sender.send((data.to_vec(), method, *addr)).is_err() {
+            if (socketRecv.TryGetValue(sainterface, let sender))
+            {
+                if (sender.sock.Send(data.Ptr, (int32)data.Length, toWhere) < 0)
+                {
                     is_destroy = true;
                 }
             }
         }
 
-        if is_destroy {
-            self.remove(interface);
+        if (is_destroy)
+        {
+            remove(sainterface);
         }
     }
 
     /// delete socket.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::net::SocketAddr;
-    /// use turn_server::router::*;
-    /// use turn_server::turn::ResponseMethod;
-    ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let addr = "127.0.0.1:8080".parse::<SocketAddr>().unwrap();
-    ///     let router = Router::default();
-    ///     let mut receiver = router.get_receiver(addr);
-    ///
-    ///     router.send(&addr, ResponseMethod::ChannelData, &addr, &[1, 2, 3]);
-    ///     let ret = receiver.recv().await.unwrap();
-    ///     assert_eq!(ret.0, vec![1, 2, 3]);
-    ///     assert_eq!(ret.1, ResponseMethod::ChannelData);
-    ///     assert_eq!(ret.2, addr);
-    ///
-    ///     router.remove(&addr);
-    ///     assert!(receiver.recv().await.is_none());
-    /// }
-    /// ```
-    pub fn remove(&self, interface: &SocketAddr) {
-        drop(self.0.write().remove(interface))
+    public void remove(SocketAddress sainterface)
+    {
+        using(routerLock.Write())
+        {
+            // Close connection?
+            socketRecv.Remove(sainterface);
+        }
     }
 }

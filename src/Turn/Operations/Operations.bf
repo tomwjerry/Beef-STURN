@@ -1,68 +1,110 @@
-pub mod allocate;
-pub mod binding;
-pub mod channel_bind;
-pub mod channel_data;
-pub mod create_permission;
-pub mod indication;
-pub mod refresh;
+namespace BeefSturn.Turn.Operations;
 
-use super::{
-    Observer,
-    sessions::{SessionAddr, Sessions},
-};
+using System;
+using System.Collections;
+using Beef_Net;
+using BeefSturn;
+using BeefSturn.Stun;
 
-use crate::stun::{
-    Decoder, MessageRef, Payload, StunError,
-    attribute::{Nonce, UserName},
-    method::{
-        ALLOCATE_REQUEST, BINDING_REQUEST, CHANNEL_BIND_REQUEST, CREATE_PERMISSION_REQUEST, REFRESH_REQUEST,
-        SEND_INDICATION, StunMethod,
-    },
-};
-
-use std::{net::SocketAddr, sync::Arc};
-
-use bytes::BytesMut;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResponseMethod {
-    Stun(StunMethod),
-    ChannelData,
+enum ResponseMethod
+{
+    case Stun(Method.StunMethod sm);
+    case ChannelData;
 }
 
 /// The context of the service.
 ///
 /// A service corresponds to a Net Endpoint, different sockets have different
 /// addresses and so on, but other things are basically the same.
-pub struct ServiceContext<T: Observer> {
-    pub realm: String,
-    pub software: String,
-    pub sessions: Arc<Sessions<T>>,
-    pub endpoint: SocketAddr,
-    pub interface: SocketAddr,
-    pub interfaces: Arc<Vec<SocketAddr>>,
-    pub observer: T,
+struct ServiceContext : IDisposable
+{
+    public StringView realm;
+    public StringView software;
+    public Sessions sessions;
+    public SocketAddress endpoint;
+    public SocketAddress sainterface;
+    public List<SocketAddress> interfaces;
+    public Observer observer;
+
+    public this()
+    {
+        this = default;
+        interfaces = new List<SocketAddress>();
+        observer = new Observer(Config(), Statistics());
+        sessions = new Sessions(observer);
+    }
+
+    public this(Span<SocketAddress> interfaces, Observer observer, Sessions sessions)
+    {
+        this = default;
+        this.interfaces = new List<SocketAddress>(interfaces);
+        this.observer = new Observer(observer);
+        this.sessions = new Sessions(sessions);
+    }
+
+    public void Dispose()
+    {
+        delete interfaces;
+        delete observer;
+        delete sessions;
+    }
 }
 
 /// The request of the service.
-pub struct Requet<'a, 'b, T, M>
-where
-    T: Observer + 'static,
+struct Request : IDisposable
 {
-    pub address: &'a SessionAddr,
-    pub bytes: &'b mut BytesMut,
-    pub service: &'a ServiceContext<T>,
-    pub message: &'a M,
-}
+    public SessionAddr address;
+    public ByteList bytes;
+    public ServiceContext service;
+    public MessageRef message;
+    public ChannelData chanData;
 
-impl<'a, 'b, T> Requet<'a, 'b, T, MessageRef<'a>>
-where
-    T: Observer + 'static,
-{
-    /// Check if the ip address belongs to the current turn server.
-    #[inline(always)]
-    pub fn verify_ip(&self, address: &SocketAddr) -> bool {
-        self.service.interfaces.iter().any(|item| item.ip() == address.ip())
+    public this()
+    {
+        this = default;
+        bytes = new ByteList();
+    }
+
+    public this(SessionAddr addr, Span<uint8> btlist, ServiceContext sc, MessageRef msg)
+    {
+        address = addr;
+        bytes = new ByteList();
+        bytes.Set(btlist);
+        service = sc;
+        message = msg;
+        chanData = ChannelData();
+    }
+
+    public this(SessionAddr addr, Span<uint8> btlist, ServiceContext sc, ChannelData chanDt)
+    {
+        address = addr;
+        bytes = new ByteList();
+        bytes.Set(btlist);
+        service = sc;
+        message = MessageRef();
+        chanData = chanDt;
+    }
+
+    public void Dispose()
+    {
+        delete bytes;
+    }
+
+    public bool verify_ip(SocketAddress address)
+    {
+        service.interfaces.FindIndex(scope (item) =>
+        {
+            if (address.Family == AF_INET)
+            {
+                return address.u.IPv4.sin_addr.s_addr == item.u.IPv4.sin_addr.s_addr;
+            }
+            else
+            {
+                return address.u.IPv6.sin6_addr.u6_addr32 == item.u.IPv6.sin6_addr.u6_addr32;
+            }
+        });
+
+        return false;
     }
 
     /// The key for the HMAC depends on whether long-term or short-term
@@ -110,59 +152,89 @@ where
     /// the end of the MESSAGE-INTEGRITY attribute prior to calculating the
     /// HMAC.  Such adjustment is necessary when attributes, such as
     /// FINGERPRINT, appear after MESSAGE-INTEGRITY.
-    #[inline(always)]
-    pub fn auth(&self) -> Option<(&str, [u8; 16])> {
-        let username = self.message.get::<UserName>()?;
-        let integrity = self
-            .service
-            .sessions
-            .get_integrity(&self.address, username, self.service.realm.as_str())?;
+    public Result<(StringView, uint8[16])> auth()
+    {
+        let username = message.getAttr<UserName>();
+        StringView usernameStr;
+        if (username case .Ok(let unameMsg))
+        {
+            usernameStr = ((UserName)unameMsg).username;
+        }
+        else
+        {
+            return .Err;
+        }
+        uint8[16] integrity = service.sessions.get_integrity(address, usernameStr, service.realm);
 
         // if nonce is not empty, check nonce
-        if let Some(nonce) = self.message.get::<Nonce>() {
-            if self.service.sessions.get_nonce(&self.address).get_ref()?.0.as_str() != nonce {
-                return None;
+        if (message.getAttr<Nonce>() case .Ok(let nonce))
+        {
+            if (service.sessions.get_nonce(address).0 != ((Nonce)nonce).strVal)
+            {
+                return .Err;
             }
         }
 
-        self.message.integrity(&integrity).ok()?;
-        Some((username, integrity))
+        if (message.integrity(Digest(integrity)) case .Err)
+        {
+            return .Err;
+        }
+        return .Ok((usernameStr, integrity));
     }
 }
 
 /// The response of the service.
-pub struct Response<'a> {
-    pub bytes: &'a [u8],
-    pub method: ResponseMethod,
-    pub relay: Option<SocketAddr>,
-    pub endpoint: Option<SocketAddr>,
+struct Response
+{
+    public Span<uint8> bytes;
+    public ResponseMethod method;
+    public SocketAddress? relay;
+    public SocketAddress? endpoint;
+
+    public this()
+    {
+        bytes = Span<uint8>();
+        method = ResponseMethod();
+        relay = null;
+        endpoint = null;
+    }
 }
 
 /// process udp message and return message + address
-pub struct Operationer<T>
-where
-    T: Observer + 'static,
+struct Operationer : IDisposable
 {
-    service: ServiceContext<T>,
-    address: SessionAddr,
-    decoder: Decoder,
-    bytes: BytesMut,
-}
+    public ServiceContext service;
+    public SessionAddr address;
+    public Decoder decoder;
+    public ByteList bytes;
 
-impl<T> Operationer<T>
-where
-    T: Observer + 'static,
-{
-    pub fn new(service: ServiceContext<T>) -> Self {
-        Self {
-            address: SessionAddr {
-                address: "0.0.0.0:0".parse().unwrap(),
-                interface: service.interface,
+    public this(ServiceContext service)
+    {
+        this.address = SessionAddr() {
+            address = SocketAddress()
+            {
+                Family = AF_INET,
+                u = (SocketAddress.USockAddr()
+                {
+                    IPv4 = sockaddr_in()
+                    {
+                        sin_port = 0,
+                        sin_addr = in_addr() { s_bytes = uint8[4](0, 0, 0, 0) }
+                    }
+                })
             },
-            bytes: BytesMut::with_capacity(4096),
-            decoder: Decoder::default(),
-            service,
-        }
+            sainterface = service.sainterface
+        };
+
+        bytes = new ByteList();
+        bytes.EnsureCapacity(4096, true);
+        
+        this.service = service;
+    }
+
+    public void Dispose()
+    {
+        delete bytes;
     }
 
     /// process udp data
@@ -275,42 +347,44 @@ where
     ///
     /// The client may have multiple allocations on a server at the same
     /// time.
-    pub fn route<'a, 'b: 'a>(
-        &'b mut self,
-        bytes: &'b [u8],
-        address: SocketAddr,
-    ) -> Result<Option<Response<'a>>, StunError> {
-        self.address.address = address;
+    public Result<Response, StunError> route(
+        Span<uint8> bytes,
+        SocketAddress address
+    ) mut
+    {
+        this.address.address = address;
 
-        Ok(match self.decoder.decode(bytes)? {
-            Payload::ChannelData(channel) => channel_data::process(
-                bytes,
-                Requet {
-                    bytes: &mut self.bytes,
-                    service: &self.service,
-                    address: &self.address,
-                    message: &channel,
-                },
-            ),
-            Payload::Message(message) => {
-                let method = message.method();
-                let req = Requet {
-                    bytes: &mut self.bytes,
-                    service: &self.service,
-                    address: &self.address,
-                    message: &message,
-                };
+        if (decoder.decode(bytes) case .Ok(let payload))
+        {
+            switch(payload)
+            {
+                case .ChannelData(let channel):
+                    return TOChannelData.process(
+                        bytes,
+                        Request(this.address, bytes, service, channel));
 
-                match method {
-                    BINDING_REQUEST => binding::process(req),
-                    ALLOCATE_REQUEST => allocate::process(req),
-                    CREATE_PERMISSION_REQUEST => create_permission::process(req),
-                    CHANNEL_BIND_REQUEST => channel_bind::process(req),
-                    REFRESH_REQUEST => refresh::process(req),
-                    SEND_INDICATION => indication::process(req),
-                    _ => None,
-                }
+                case .Message(let message):
+                    let method = message.method();
+                    Request req = Request(
+                        this.address,
+                        bytes,
+                        service,
+                        message
+                    );
+    
+                    switch (method)
+                    {
+                    case .BINDING_REQUEST: return Binding.process(req);
+                    case .ALLOCATE_REQUEST: return TOAllocate.process(req);
+                    case .CREATE_PERMISSION_REQUEST: return CreatePermission.process(req);
+                    case .CHANNEL_BIND_REQUEST: return ChannelBind.process(req);
+                    case .REFRESH_REQUEST: return Refresh.process(req);
+                    case .SEND_INDICATION: return Indication.process(req);
+                    default: return .Err(.InvalidInput);
+                    }
             }
-        })
+        }
+
+        return .Err(.InvalidInput);
     }
 }

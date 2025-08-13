@@ -25,6 +25,12 @@ class MessageEncoder
     public Span<uint8> token;
     public List<uint8> bytes;
 
+    public this()
+    {
+        bytes = new List<uint8>();
+        token = Span<uint8>();
+    }
+
     public this(Span<uint8> ttoken, Span<uint8> tbytes)
     {
         bytes = new List<uint8>(tbytes);
@@ -53,7 +59,7 @@ class MessageEncoder
     }
 
     /// rely on old message to create new message.
-    public void extend(Method.StunMethod method, MessageRef reader, List<uint8> nbytes, MessageEncoder newMsg)
+    public static void extend(Method.StunMethod method, MessageRef reader, List<uint8> nbytes, MessageEncoder newMsg)
     {
         Span<uint8> ttoken = reader.token();
 
@@ -283,7 +289,7 @@ class MessageDecoder
     }
 }
 
-struct MessageRef
+struct MessageRef : IDisposable
 {
     /// message method.
     public Method.StunMethod method;
@@ -293,6 +299,27 @@ struct MessageRef
     public uint16 size;
     // message attribute list.
     public Attributes attributes;
+
+    public this()
+    {
+        this = default;
+    }
+
+    public this<T>(T msg) where T : STAttribute<T>
+    {
+        List<uint8> msgBytes = scope List<uint8>();
+        T.encode(msg, msgBytes, Span<uint8>());
+        bytes = msgBytes;
+        size = (uint16)bytes.Length;
+        method = .Allocate(.Request);
+        attributes = Attributes();
+        attributes.aAppend(T.KIND, uint64[2](0, size));
+    }
+
+    public void Dispose()
+    {
+        attributes.Dispose();
+    }
 
     /// message method.
     public Method.StunMethod method()
@@ -306,113 +333,27 @@ struct MessageRef
         return bytes.Slice(8, 12);
     }
 
-    private Result<STAttribute, STError> getAttrHelper(AttrKind getWhat, uint64[2] range)
-    {
-        switch (getWhat)
-        {
-        case .UserName:
-            return UserName.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .Data:
-            return Data.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .MappedAddress:
-            return MappedAddress.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .MessageIntegrity:
-            return MessageIntegrity.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .ErrorCode:
-            return ErrorCode.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .ChannelNumber:
-            return ChannelNumber.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .Lifetime:
-            return Lifetime.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .XorPeerAddress:
-            return XorPeerAddress.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .Realm:
-            return Realm.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .Nonce:
-            return Nonce.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .XorRelayedAddress:
-            return Nonce.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .RequestedAddressFamily:
-            return RequestedAddressFamily.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .EvenPort:
-            return EvenPort.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .RequestedTransport:
-            return RequestedTransport.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .DontFragment:
-            return DontFragment.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .AccessToken:
-            return AccessToken.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .XorMappedAddress:
-            return XorMappedAddress.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .ReservationToken:
-            return ReservationToken.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .Priority:
-            return Priority.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .UseCandidate:
-            return UseCandidate.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .AdditionalAddressFamily:
-            return AdditionalAddressFamily.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .Software:
-            return Software.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .Fingerprint:
-            return Fingerprint.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .IceControlled:
-            return IceControlled.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .IceControlling:
-            return IceControlling.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        case .ResponseOrigin:
-            return ResponseOrigin.decode(bytes.Slice((int)range[0], (int)range[1]), this.token());
-
-        default:
-            return .Err(StunError.InvalidInput);
-        }
-    }
-
     /// get attribute.
     ///
     /// get attribute from message attribute list.
-    public Result<STAttribute, STError> getAttr(AttrKind getWhat)
+    public Result<T, STError> getAttr<T>() where T : STAttribute<T>
     {
-        return getAttrHelper(getWhat, attributes.get(getWhat));
+        uint64[2] range = attributes.get(T.KIND);
+        return T.decode(bytes.Slice((int)range[0], (int)range[1]), token());
     }
 
     /// Gets all the values of an attribute from a list.
     ///
     /// Normally a stun message can have multiple attributes with the same name,
     /// and this function will all the values of the current attribute.
-    public Span<STAttribute> get_all(AttrKind getWhat)
+    public Span<T> get_all<T>() where T : STAttribute<T>
     {
-        Span<uint64[2]>.Enumerator attrRanges = attributes.get_all(getWhat);
-        List<STAttribute> collectionList = scope List<STAttribute>();
+        Span<uint64[2]>.Enumerator attrRanges = attributes.get_all<T>();
+        List<T> collectionList = scope List<T>();
 
         for (let r in attrRanges)
         {
-            if (getAttrHelper(getWhat, r) case .Ok(let outAttr))
+            if (T.decode(bytes.Slice((int)r[0], (int)r[1]), token()) case .Ok(let outAttr))
             {
                 collectionList.Add(outAttr);
             }
@@ -436,7 +377,7 @@ struct MessageRef
         // an error occurs if not found.
         MessageIntegrity integrity;
 
-        if (getAttr(.MessageIntegrity) case .Ok(let lintegrity))
+        if (getAttr<MessageIntegrity>() case .Ok(let lintegrity))
         {
             integrity = (MessageIntegrity)lintegrity;
         }
