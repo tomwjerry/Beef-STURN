@@ -29,7 +29,7 @@ struct CfgInterface
 {
     public Transport transport;
     /// turn server listen address
-    public SocketAddress bind;
+    public (uint16, StringView) bind;
     /// external address
     ///
     /// specify the node external address and port.
@@ -50,12 +50,13 @@ struct CfgInterface
         var bindExternal = tranportAddr.GetNext().Get().Split('/');
         StringView bindStr = bindExternal.GetNext();
         StringView externalStr = bindExternal.GetNext();
-        SocketAddress bind = ParseSocketAddress(bindStr);
         SocketAddress external = ParseSocketAddress(externalStr);
+
+        uint16 bindPort = UInt8.Parse(bindStr.Substring(bindStr.LastIndexOf(':')));
 
         return .Ok(CfgInterface {
             external = external,
-            bind = bind,
+            bind = (bindPort, bindStr.Substring(0, bindStr.LastIndexOf(':'))),
             transport = transport
         });
     }
@@ -262,9 +263,13 @@ struct Config
                     {
                         for (int i = 0; i < interfaces.Count; i++)
                         {
-                            conf.turn.interfaces.Add(CfgInterface() {
+                            StringView bindStr = interfaces[i]["bind"].GetString().Value;
+                            uint16 bindPort = UInt8.Parse(bindStr.Substring(bindStr.LastIndexOf(':')));
+
+                            conf.turn.interfaces.Add(CfgInterface()
+                            {
                                 transport = Transport.FromStr(interfaces[i]["transport"].GetString().Value).Value,
-                                bind = ParseSocketAddress(interfaces[i]["bind"].GetString().Value),
+                                bind = (bindPort, bindStr.Substring(0, bindStr.LastIndexOf(':'))),
                                 external = ParseSocketAddress(interfaces[i]["external"].GetString().Value)
                             });
                         }

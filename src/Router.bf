@@ -35,13 +35,16 @@ struct Router : IDisposable
     ///
     /// Each transport protocol is layered according to its own socket, and
     /// the data forwarded to this socket can be obtained by routing.
-    public Receiver get_receiver(SocketAddress sainterface)
+    public Receiver get_receiver(SocketAddress sainterface, Socket sock = null)
     {
         using (routerLock.Write())
         {
             if (!socketRecv.ContainsKey(sainterface))
             {
-                socketRecv.Add(sainterface, Receiver());
+                socketRecv.Add(sainterface, Receiver()
+                {
+                    sock = sock
+                });
             }
         }
 

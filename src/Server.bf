@@ -1,9 +1,12 @@
 namespace BeefSturn;
 
 using System;
+using System.Collections;
 using System.Threading;
+using System.Diagnostics;
 using Beef_Net;
 using Beef_Net.Connection;
+using BeefSturn.Stun;
 using BeefSturn.Turn;
 using BeefSturn.Turn.Operations;
 
@@ -28,8 +31,17 @@ interface Server
 
 class SturnUDP : Server
 {
+    Thread recvThread;
+    Thread sendThread;
     UdpConnection socket;
     bool running;
+
+    Router router;
+    StatisticsReporter reporter;
+    Operationer operationer;
+    SessionAddr session_addr;
+    SocketAddress external;
+    Statistics statistics;
     /// udp socket process thread.
     ///
     /// read the data packet from the UDP socket and hand
@@ -41,14 +53,13 @@ class SturnUDP : Server
         socket = new UdpConnection();
         socket.Listen(options.bind.0, options.bind.1);
 
-        String local_addr = scope String();
-        socket.Iterator.GetLocalAddress(local_addr);
+        router = options.router;
+        reporter = options.statistics.get_reporter(Transport.UDP);
+        operationer = options.service.get_operationer(options.external, options.external);
+        external = options.external;
+        statistics = options.statistics;
 
-        Router router = options.router;
-        StatisticsReporter reporter = options.statistics.get_reporter(Transport.UDP);
-        Operationer operationer = options.service.get_operationer(options.external, options.external);
-
-        SessionAddr session_addr = SessionAddr()
+        session_addr = SessionAddr()
         {
             address = options.external,
             sainterface = options.external
@@ -56,106 +67,8 @@ class SturnUDP : Server
 
         running = true;
 
-        Thread recvThread = new Thread(new() =>
-        {
-            uint8[2048] buf = uint8[2048](0,);
-            
-            while (running)
-            {
-                // Note: An error will also be reported when the remote host is
-                // shut down, which is not processed yet, but a
-                // warning will be issued.
-                int32 recvCode = socket.Get(&buf, 2048);
-                if (recvCode < 0)
-                {
-                    continue;
-                }
-                else if (!Socket.IsPipeError(recvCode))
-                {
-                    break;
-                }
-
-                session_addr.address = socket.Iterator.PeerAddress;
-
-                reporter.send(session_addr, Span<Stats>(new Stats[](Stats.ReceivedBytes(2048), Stats.ReceivedPkts(1))));
-
-                // The stun message requires at least 4 bytes. (currently the
-                // smallest stun message is channel data,
-                // excluding content)
-                if (buf[0] > 0 || buf[1] > 0 || buf[2] > 0 || buf[3] > 0)
-                {
-                    if (operationer.route(Span<uint8>(&buf, 2048), session_addr.address) case .Ok(let res))
-                    {
-                        SocketAddress target = session_addr.address;
-                        if (res.relay.TryGetValue(let rl))
-                        {
-                            target = rl;
-                        }
-                        if (res.endpoint.TryGetValue(let endpoint))
-                        {
-                            router.send(endpoint, res.method, target, res.bytes);
-                        }
-                        else
-                        {
-                            int32 errcod = 1;
-                            if ((errcod = socket.Send(res.bytes.Ptr, (int32)res.bytes.Length, target)) < 0)
-                            {
-                                if (!Socket.IsPipeError(errcod))
-                                {
-                                    break;
-                                }
-                            }
-
-                            reporter
-                                .send(session_addr, Span<Stats>(new Stats[](Stats.SendBytes((uint64)res.bytes.Length), Stats.SendPkts(1))));
-
-                            if (res.method case ResponseMethod.Stun(let method))
-                            {
-                                if (method.is_error())
-                                {
-                                    reporter.send(session_addr, Span<Stats>(new Stats[](Stats.ErrorPkts(1))));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        Thread sendThread = new Thread(new() =>
-	    {
-            SessionAddr session_addr = SessionAddr()
-            {
-                address = options.external,
-                sainterface = options.external
-            };
-
-            StatisticsReporter reporter = options.statistics.get_reporter(Transport.UDP);
-            Receiver receiver = router.get_receiver(options.external);
-            uint8[2048] buf = uint8[2048](0,);
-            int recvcode = 1;
-            while ((recvcode = receiver.sock.Get(&buf, 2048)) > 0)
-            {
-                String addr = scope String();
-                receiver.sock.GetPeerAddress(addr);
-                session_addr.address = ParseSocketAddress(addr);
-                int32 res = socket.Send(&buf, 2048);
-
-                if (!Socket.IsPipeError(res))
-                {
-                    break;
-                }
-
-                if (res >= 0)
-                {
-                    reporter.send(session_addr, Span<Stats>(new Stats[](Stats.SendBytes(2048), Stats.SendPkts(1))));
-                }
-            }
-
-            router.remove(options.external);
-
-            Log.Error("udp server close: interface={}", local_addr);
-        });
+        recvThread = new Thread(new => recvThreadFun);
+        sendThread = new Thread(new => sendThreadFun);
 
         Log.Info(
             "turn server listening: bind={}, external={}, transport=UDP",
@@ -165,24 +78,116 @@ class SturnUDP : Server
 
         return .Ok;
     }
+
+    private void recvThreadFun()
+    {
+        uint8[2048] buf = uint8[2048](0,);
+
+        while (running)
+        {
+            // Note: An error will also be reported when the remote host is
+            // shut down, which is not processed yet, but a
+            // warning will be issued.
+            int32 recvCode = socket.Get(&buf, 2048);
+            if (recvCode < 0)
+            {
+                continue;
+            }
+            else if (!Socket.IsPipeError(recvCode))
+            {
+                break;
+            }
+
+            session_addr.address = socket.Iterator.PeerAddress;
+
+            reporter.send(session_addr, Span<Stats>(new Stats[](Stats.ReceivedBytes((uint64)recvCode), Stats.ReceivedPkts(1))));
+
+            // The stun message requires at least 4 bytes. (currently the
+            // smallest stun message is channel data,
+            // excluding content)
+            if (buf[0] > 0 || buf[1] > 0 || buf[2] > 0 || buf[3] > 0)
+            {
+                if (operationer.route(Span<uint8>(&buf, recvCode), session_addr.address) case .Ok(let res))
+                {
+                    SocketAddress target = session_addr.address;
+                    if (res.relay.TryGetValue(let rl))
+                    {
+                        target = rl;
+                    }
+                    if (res.endpoint.TryGetValue(let endpoint))
+                    {
+                        router.send(endpoint, res.method, target, res.bytes);
+                    }
+                    else
+                    {
+                        int32 errcod = 1;
+                        if ((errcod = socket.Send(res.bytes.Ptr, (int32)res.bytes.Length, target)) < 0)
+                        {
+                            if (!Socket.IsPipeError(errcod))
+                            {
+                                break;
+                            }
+                        }
+
+                        reporter
+                            .send(session_addr, Span<Stats>(new Stats[](Stats.SendBytes((uint64)res.bytes.Length), Stats.SendPkts(1))));
+
+                        if (res.method case ResponseMethod.Stun(let method))
+                        {
+                            if (method.is_error())
+                            {
+                                reporter.send(session_addr, Span<Stats>(new Stats[](Stats.ErrorPkts(1))));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void sendThreadFun()
+    {
+        SessionAddr session_addr = SessionAddr()
+        {
+            address = external,
+            sainterface = external
+        };
+
+        StatisticsReporter reporter = statistics.get_reporter(Transport.UDP);
+        Receiver receiver = router.get_receiver(external);
+        uint8[2048] buf = uint8[2048](0,);
+        while (running)
+        {
+            int32 size = receiver.sock.Get(&buf, 2048);
+            if (size < 1)
+            {
+                continue;
+            }
+            String addr = scope String();
+            receiver.sock.GetPeerAddress(addr);
+            session_addr.address = ParseSocketAddress(addr);
+            int32 res = socket.Send(&buf, size);
+
+            if (!Socket.IsPipeError(res))
+            {
+                break;
+            }
+
+            if (res >= 0)
+            {
+                reporter.send(session_addr, Span<Stats>(new Stats[](Stats.SendBytes((uint64)size), Stats.SendPkts(1))));
+            }
+        }
+
+        router.remove(external);
+
+        Log.Error("udp server close: interface={}", receiver.sock.LocalAddress);
+    }
 }
 
-mod tcp {
-    use super::{Server as ServerExt, ServerStartOptions};
-    use crate::{
-        statistics::Stats,
-        stun::{Decoder, Transport},
-        turn::{Observer, ResponseMethod, SessionAddr},
-    };
-
-    use std::{
-        ops::{Deref, DerefMut},
-        sync::Arc,
-    };
-
-    use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::TcpListener, sync::Mutex};
-
-    static ZERO_BYTES: [u8; 8] = [0u8; 8];
+class SturnTCP : Server
+{
+    const uint8[8] ZERO_BYTS = uint8[8](0,);
 
     /// An emulated double buffer queue, this is used when reading data over
     /// TCP.
@@ -201,302 +206,400 @@ mod tcp {
     ///
     /// This queue only needs to copy the unconsumed data without duplicating
     /// the memory allocation, which will reduce a lot of overhead.
-    struct ExchangeBuffer {
-        buffers: [(Vec<u8>, usize /* len */); 2],
-        index: usize,
-    }
-
-    impl Default for ExchangeBuffer {
-        #[rustfmt::skip]
-        fn default() -> Self {
-            Self {
-                index: 0,
-                buffers: [
-                    (vec![0u8; 2048], 0),
-                    (vec![0u8; 2048], 0),
-                ],
-            }
+    struct ExchangeBuffer : IDisposable
+    {
+        public (List<uint8>, int)[2] buffers;
+        public uint8 index;
+    
+        public this()
+        {
+            index = 0;
+            buffers[0].0 = new List<uint8>(2048);
+            buffers[0].1 = 0;
+            buffers[1].0 = new List<uint8>(2048);
+            buffers[1].1 = 0;
         }
-    }
 
-    impl Deref for ExchangeBuffer {
-        type Target = [u8];
-
-        fn deref(&self) -> &Self::Target {
-            &self.buffers[self.index].0[..]
+        public void Dispose()
+        {
+            delete buffers[0].0;
+            delete buffers[1].0;
         }
-    }
 
-    impl DerefMut for ExchangeBuffer {
+        public Span<uint8> deref()
+        {
+            return buffers[index].0;
+        }
+
         // Writes need to take into account overwriting written data, so fetching the
         // writable buffer starts with the internal cursor.
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            let len = self.buffers[self.index].1;
-            &mut self.buffers[self.index].0[len..]
+        public void deref_mut(ref uint8* mutref)
+        {
+            mutref = &buffers[index].0.Ptr[buffers[index].1];
         }
-    }
 
-    impl ExchangeBuffer {
-        fn len(&self) -> usize {
-            self.buffers[self.index].1
+        public int len()
+        {
+            return buffers[index].1;
         }
 
         /// The buffer does not automatically advance the cursor as BytesMut
         /// does, and you need to manually advance the length of the data
         /// written.
-        fn advance(&mut self, len: usize) {
-            self.buffers[self.index].1 += len;
+        public void advance(int len) mut
+        {
+            buffers[index].1 += len;
         }
 
-        fn split(&mut self, len: usize) -> &[u8] {
-            let (ref current_bytes, current_len) = self.buffers[self.index];
-
+        public Span<uint8> split(int len) mut
+        {
             // The length of the separation cannot be greater than the length of the data.
-            assert!(len <= current_len);
+            Debug.Assert(len <= buffers[index].1);
 
+            uint8 oleindex = index;
             // Length of unconsumed data
-            let remaining = current_len - len;
+            int remaining = buffers[index].1 - len;
 
             {
                 // The current buffer is no longer in use, resetting the content length.
-                self.buffers[self.index].1 = 0;
+                buffers[index].1 = 0;
 
                 // Invert the buffer.
-                self.index = if self.index == 0 { 1 } else { 0 };
+                index = index == 0 ? 1 : 0;
 
                 // The length of unconsumed data needs to be updated into the reversed
                 // completion buffer.
-                self.buffers[self.index].1 = remaining;
+                buffers[index].1 = remaining;
             }
 
             // Unconsumed data exists and is copied to the free buffer.
-            #[allow(mutable_transmutes)]
-            if remaining > 0 {
-                unsafe { std::mem::transmute::<&[u8], &mut [u8]>(&self.buffers[self.index].0[..remaining]) }
-                    .copy_from_slice(&current_bytes[len..current_len]);
+            if (remaining > 0)
+            {
+                buffers[oleindex].0.CopyTo(len, buffers[index].0, 0, buffers[oleindex].1 - len);
             }
 
-            &current_bytes[..len]
+            return buffers[oleindex].0.GetRange(0, len);
         }
     }
+
+    struct SocketThread
+    {
+        public Thread thread;
+        public Monitor mon;
+        public Receiver receiver;
+        public Operationer operationer;
+        public bool running;
+    }
+
+    Thread listenerThreadObj;
+    Thread bufferThreadObj;
+    TcpConnection listener;
+    bool running;
+
+    Router router;
+    StatisticsReporter reporter;
+    Service service;
+    SocketAddress external;
+    Statistics statistics;
+
+    List<SocketThread> socketThreads;
 
     /// tcp socket process thread.
     ///
     /// This function is used to handle all connections coming from the tcp
     /// listener, and handle the receiving, sending and forwarding of messages.
-    pub struct Server;
+    public Result<void, StringView> start(ServerStartOptions options)
+    {
+        listener = new TcpConnection();
+        listener.Listen(options.bind.0, options.bind.1);
+        listener.OnAccept = new => acceptConnection;
+        listener.OnDisconnect = new => disconnectClient;
+        socketThreads = new List<SocketThread>();
 
-    impl ServerExt for Server {
-        async fn start<T>(
-            ServerStartOptions {
-                bind,
-                external,
-                service,
-                router,
-                statistics,
-            }: ServerStartOptions<T>,
-        ) -> Result<(), anyhow::Error>
-        where
-            T: Clone + Observer + 'static,
+        router = options.router;
+        reporter = options.statistics.get_reporter(Transport.TCP);
+        external = options.external;
+        service = options.service;
+        statistics = options.statistics;
+
+        running = true;
+
+        listenerThreadObj = new Thread(new => listenerThread);
+
+        Log.Info(
+            "turn server listening: bind={}, external={}, transport=TCP",
+            options.bind,
+            external
+        );
+
+        return .Ok;
+    }
+
+    private void listenerThread()
+    {
+        // Accept all connections on the current listener, but exit the entire
+	    // process when an error occurs.
+	    while (running)
         {
-            let listener = TcpListener::bind(bind).await?;
-            let local_addr = listener.local_addr()?;
+            listener.CallAction();
+        }
 
-            tokio::spawn(async move {
-                // Accept all connections on the current listener, but exit the entire
-                // process when an error occurs.
-                while let Ok((socket, address)) = listener.accept().await {
-                    let router = router.clone();
-                    let reporter = statistics.get_reporter(Transport::TCP);
-                    let mut receiver = router.get_receiver(address);
-                    let mut operationer = service.get_operationer(address, external);
+        Log.Error("tcp server close: interface={}", listener.Iterator.LocalAddress);
+    }
 
-                    log::info!("tcp socket accept: addr={:?}, interface={:?}", address, local_addr,);
+    private void acceptConnection(Socket aSocket)
+    {
+        Log.Info("tcp socket accept: addr={:?}, interface={?}", aSocket.PeerAddress, listener.Iterator.LocalAddress);
 
-                    // Disable the Nagle algorithm.
-                    // because to maintain real-time, any received data should be processed
-                    // as soon as possible.
-                    if let Err(e) = socket.set_nodelay(true) {
-                        log::error!("tcp socket set nodelay failed!: addr={}, err={}", address, e);
+        // Disable the Nagle algorithm.
+        // because to maintain real-time, any received data should be processed
+        // as soon as possible.
+        aSocket.SetBlocking(false);
+
+        socketThreads.Add(SocketThread()
+        {
+            thread = new Thread(new () => { messageHandlerThread(socketThreads.Count); }),
+            mon = new Monitor(),
+            receiver = router.get_receiver(aSocket.PeerAddress, aSocket),
+            operationer = service.get_operationer(aSocket.PeerAddress, external),
+            running = true
+        });
+
+        socketThreads.Add(SocketThread()
+        {
+            thread = new Thread(new () => { messageReaderThread(socketThreads.Count); }),
+            mon = new Monitor(),
+            receiver = router.get_receiver(aSocket.PeerAddress, aSocket),
+            operationer = service.get_operationer(aSocket.PeerAddress, external),
+            running = true
+        });
+    }
+
+    private void messageHandlerThread(int sockThreadIdx)
+    {
+        Receiver receiver = socketThreads[sockThreadIdx].receiver;
+        uint8[2048] buf = uint8[2048](0,);
+        SessionAddr session_addr = SessionAddr()
+        {
+            sainterface = external,
+            address = receiver.sock.PeerAddress
+        };
+        // Use a separate task to handle messages forwarded to this socket.
+        while (running && socketThreads[sockThreadIdx].running)
+        {
+            int32 buflen = receiver.sock.Get(&buf, 2048);
+            if (buflen < 1)
+            {
+                continue;
+            }
+
+            using (socketThreads[sockThreadIdx].mon.Enter())
+            {
+                if (socketThreads[sockThreadIdx].receiver.sock.Send(&buf, buflen) < 0)
+                {
+                    break;
+                }
+                else
+                {
+                    reporter.send(session_addr,
+                        Span<Stats>(new Stats[](Stats.SendBytes((uint64)buflen), Stats.SendPkts(1))));
+                }
+            }
+
+            // The channel data needs to be aligned in multiples of 4 in
+            // tcp. If the channel data is forwarded to tcp, the alignment
+            // bit needs to be filled, because if the channel data comes
+            // from udp, it is not guaranteed to be aligned and needs to be
+            // checked.
+            if (receiver.respMethod case ResponseMethod.ChannelData)
+            {
+                int32 pad = buflen % 4;
+                Span<uint8> zerospan = Span<uint8>(new uint8[4](0,));
+                if (pad > 0 && socketThreads[sockThreadIdx].receiver.sock.Send(zerospan.Slice(4 - pad).Ptr, 4 - pad) <= 0)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    private void messageReaderThread(int sockThreadIdx)
+    {
+        Sessions ses;
+        service.get_sessions(out ses);
+        ExchangeBuffer buffer = ExchangeBuffer();
+        SocketAddress address = socketThreads[sockThreadIdx].receiver.sock.PeerAddress;
+        SessionAddr session_addr = SessionAddr()
+        {
+            sainterface = external,
+            address = address
+        };
+
+        while (running && socketThreads[sockThreadIdx].running)
+        {
+            int32 msize = socketThreads[sockThreadIdx].receiver.sock.Get(buffer.buffers[buffer.index].0.Ptr, 2048);
+
+            if (msize < 1)
+            {
+                continue;
+            }
+
+            reporter.send(session_addr, Span<Stats>(new Stats[](Stats.ReceivedBytes((uint64)msize))));
+            buffer.advance(msize);
+
+            // The minimum length of a stun message will not be less
+            // than 4.
+            if (buffer.len() < 4)
+            {
+                continue;
+            }
+
+            while (running && buffer.len() > 4 && socketThreads[sockThreadIdx].running)
+            {
+                int bsize = 0;
+                // Try to get the message length, if the currently
+                // received data is less than the message length, jump
+                // out of the current loop and continue to receive more
+                // data.
+                if (Decoder.message_size(buffer.deref(), true) case .Ok(let size))
+                {
+                    // Limit the maximum length of messages to 2048, this is to prevent buffer
+	                // overflow attacks.
+                    if (size > 2048 && size > (uint64)buffer.len())
+                    {
+                        break;
                     }
 
-                    let session_addr = SessionAddr {
-                        interface: external,
-                        address,
-                    };
+                    reporter.send(session_addr, Span<Stats>(new Stats[](Stats.ReceivedPkts(1))));
 
-                    let (mut reader, writer) = socket.into_split();
-                    let writer = Arc::new(Mutex::new(writer));
-
-                    // Use a separate task to handle messages forwarded to this socket.
-                    let writer_ = writer.clone();
-                    let reporter_ = reporter.clone();
-                    tokio::spawn(async move {
-                        while let Some((bytes, method, _)) = receiver.recv().await {
-                            let mut writer = writer_.lock().await;
-                            if writer.write_all(bytes.as_slice()).await.is_err() {
-                                break;
-                            } else {
-                                reporter_.send(&session_addr, &[Stats::SendBytes(bytes.len()), Stats::SendPkts(1)]);
-                            }
-
-                            // The channel data needs to be aligned in multiples of 4 in
-                            // tcp. If the channel data is forwarded to tcp, the alignment
-                            // bit needs to be filled, because if the channel data comes
-                            // from udp, it is not guaranteed to be aligned and needs to be
-                            // checked.
-                            if method == ResponseMethod::ChannelData {
-                                let pad = bytes.len() % 4;
-                                if pad > 0 && writer.write_all(&ZERO_BYTES[..(4 - pad)]).await.is_err() {
-                                    break;
-                                }
-                            }
-                        }
-                    });
-
-                    let sessions = service.get_sessions();
-                    tokio::spawn(async move {
-                        let mut buffer = ExchangeBuffer::default();
-
-                        'a: while let Ok(size) = reader.read(&mut buffer).await {
-                            // When the received message is 0, it means that the socket
-                            // has been closed.
-                            if size == 0 {
-                                break;
-                            } else {
-                                reporter.send(&session_addr, &[Stats::ReceivedBytes(size)]);
-                                buffer.advance(size);
-                            }
-
-                            // The minimum length of a stun message will not be less
-                            // than 4.
-                            if buffer.len() < 4 {
-                                continue;
-                            }
-
-                            loop {
-                                if buffer.len() <= 4 {
-                                    break;
-                                }
-
-                                // Try to get the message length, if the currently
-                                // received data is less than the message length, jump
-                                // out of the current loop and continue to receive more
-                                // data.
-                                let size = match Decoder::message_size(&buffer, true) {
-                                    Err(_) => break,
-                                    Ok(s) => {
-                                        // Limit the maximum length of messages to 2048, this is to prevent buffer
-                                        // overflow attacks.
-                                        if s > 2048 {
-                                            break 'a;
-                                        }
-
-                                        if s > buffer.len() {
-                                            break;
-                                        }
-
-                                        reporter.send(&session_addr, &[Stats::ReceivedPkts(1)]);
-
-                                        s
-                                    }
-                                };
-
-                                let chunk = buffer.split(size);
-                                if let Ok(ret) = operationer.route(chunk, address) {
-                                    if let Some(res) = ret {
-                                        if let Some(ref inerface) = res.endpoint {
-                                            router.send(
-                                                inerface,
-                                                res.method,
-                                                res.relay.as_ref().unwrap_or(&address),
-                                                res.bytes,
-                                            );
-                                        } else {
-                                            if writer.lock().await.write_all(res.bytes).await.is_err() {
-                                                break 'a;
-                                            }
-
-                                            reporter.send(
-                                                &session_addr,
-                                                &[Stats::SendBytes(res.bytes.len()), Stats::SendPkts(1)],
-                                            );
-
-                                            if let ResponseMethod::Stun(method) = res.method {
-                                                if method.is_error() {
-                                                    reporter.send(&session_addr, &[Stats::ErrorPkts(1)]);
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    break 'a;
-                                }
-                            }
-                        }
-
-                        // When the tcp connection is closed, the procedure to close the session is
-                        // process directly once, avoiding the connection being disconnected
-                        // directly without going through the closing
-                        // process.
-                        sessions.refresh(&session_addr, 0);
-
-                        router.remove(&address);
-
-                        log::info!("tcp socket disconnect: addr={:?}, interface={:?}", address, local_addr);
-                    });
+                    bsize = (int)size;
+                }
+                else
+                {
+                    break;
                 }
 
-                log::error!("tcp server close: interface={:?}", local_addr);
-            });
+                Span<uint8> chunk = buffer.split(bsize);
+                if (socketThreads[sockThreadIdx].operationer.route(chunk,
+                    address) case .Ok(let resp))
+                {
+                    
+                    if (resp.endpoint.HasValue)
+                    {
+                        router.send(
+                            resp.endpoint.Value,
+                            resp.method,
+                            resp.relay.HasValue ? resp.relay.Value : address,
+                            resp.bytes
+                        );
+                    }
+                    else
+                    {
+                        using (socketThreads[sockThreadIdx].mon.Enter())
+                        {
+                            if (socketThreads[sockThreadIdx].receiver.sock.Send(resp.bytes.Ptr, (int32)resp.bytes.Length) < 0)
+                            {
+                                break;
+                            }
 
-            log::info!(
-                "turn server listening: bind={}, external={}, transport=TCP",
-                bind,
-                external,
-            );
+                            reporter.send(
+                                session_addr,
+                                Span<Stats>(new Stats[](Stats.SendBytes((uint64)resp.bytes.Length), Stats.SendPkts(1)))
+                            );
 
-            Ok(())
+                            if (resp.method case ResponseMethod.Stun(let method))
+                            {
+                                if (method.is_error())
+                                {
+                                    reporter.send(session_addr, Span<Stats>(new Stats[](Stats.ErrorPkts(1))));
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        // When the tcp connection is closed, the procedure to close the session is
+        // process directly once, avoiding the connection being disconnected
+        // directly without going through the closing
+        // process.
+        ses.refresh(session_addr, 0);
+
+        router.remove(address);
+
+        Log.Info("tcp socket disconnect: addr={?}, interface={?}", address, socketThreads[sockThreadIdx].receiver.sock.LocalAddress);
+    }
+
+    void disconnectClient(Socket dissocket)
+    {
+        for (int i = socketThreads.Count - 1; i >= 0; i--)
+        {
+            if (socketThreads[i].receiver.sock == dissocket)
+            {
+                socketThreads[i].running = false;
+                delete socketThreads[i].mon;
+                delete socketThreads[i].thread;
+                socketThreads[i].operationer.Dispose();
+                socketThreads.RemoveAt(i);
+            }
         }
     }
 }
 
-/// start turn server.
-///
-/// create a specified number of threads,
-/// each thread processes udp data separately.
-pub async fn start<T>(config: &Config, statistics: &Statistics, service: &Service<T>) -> anyhow::Result<()>
-where
-    T: Clone + Observer + 'static,
+static
 {
-    #[allow(unused)]
-    use crate::config::Transport;
-
-    let router = Router::default();
-    for Interface {
-        transport,
-        external,
-        bind,
-    } in config.turn.interfaces.iter().cloned()
+    static List<Server> runners;
+    /// start turn server.
+    ///
+    /// create a specified number of threads,
+    /// each thread processes udp data separately.
+    public static Result<void> start(Config config, Statistics statistics, Service service)
     {
-        #[allow(unused)]
-        let options = ServerStartOptions {
-            statistics: statistics.clone(),
-            service: service.clone(),
-            router: router.clone(),
-            external,
-            bind,
-        };
+        Router router = Router();
 
-        match transport {
-            #[cfg(feature = "udp")]
-            Transport::UDP => udp::Server::start(options).await?,
-            #[cfg(feature = "tcp")]
-            Transport::TCP => tcp::Server::start(options).await?,
-            #[allow(unreachable_patterns)]
-            _ => (),
-        };
+        runners = new List<Server>();
+
+        for (let intobj in config.turn.interfaces)
+        {
+            //transport,
+            //external,
+            //bind,
+        
+            ServerStartOptions options = ServerStartOptions()
+            {
+                statistics = statistics,
+                service = new Service(service),
+                router = router,
+                external = intobj.external,
+                bind = intobj.bind
+            };
+
+            if (intobj.transport case .UDP)
+            {
+                SturnUDP sudp = new SturnUDP();
+                sudp.start(options);
+                runners.Add(sudp);
+            }
+            else if (intobj.transport case .TCP)
+            {
+                SturnTCP stcp = new SturnTCP();
+                stcp.start(options);
+                runners.Add(stcp);
+            }
+        }
+    
+        return .Ok;
     }
 
-    Ok(())
+    public static Result<void> stop()
+    {
+        DeleteContainerAndItems!(runners);
+
+        return .Ok;
+    }
 }

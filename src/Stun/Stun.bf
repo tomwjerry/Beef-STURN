@@ -330,7 +330,7 @@ struct Decoder
         return .Err(.InvalidInput);
     }
 
-    public Result<uint64, StunError> message_size(Span<uint8> bytes, bool is_tcp)
+    public static Result<uint64, StunError> message_size(Span<uint8> bytes, bool is_tcp)
     {
         let flag = bytes[0] >> 6;
         if (flag > 3)

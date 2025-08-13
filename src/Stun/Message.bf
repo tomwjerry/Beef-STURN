@@ -23,33 +23,32 @@ struct Digest
 class MessageEncoder
 {
     public Span<uint8> token;
-    public List<uint8> bytes;
+    public ByteList bytes;
 
     public this()
     {
-        bytes = new List<uint8>();
+        bytes = new ByteList();
         token = Span<uint8>();
     }
 
     public this(Span<uint8> ttoken, Span<uint8> tbytes)
     {
-        bytes = new List<uint8>(tbytes);
+        bytes = new ByteList();
         token = ttoken;
     }    
 
-    public this(Method.StunMethod method, uint8[12] ttoken, List<uint8> tbytes)
+    public this(Method.StunMethod method, uint8[12] ttoken, ByteList tbytes)
     {
         tbytes.Clear();
 
         uint16 methodNum = method.Into();
-        tbytes.Add((uint8)(methodNum >> 8));
-        tbytes.Add((uint8)(methodNum & 0xFF));
-        tbytes.Add(0);
-        tbytes.Add(0);
+        tbytes.AddU32(methodNum);
         tbytes.AddRange(COOKIE);
         tbytes.AddRange(ttoken);
 
-        bytes = new List<uint8>(tbytes);
+        bytes = new ByteList();
+        bytes.Set(tbytes);
+
         token = ttoken;
     }
 
@@ -59,16 +58,13 @@ class MessageEncoder
     }
 
     /// rely on old message to create new message.
-    public static void extend(Method.StunMethod method, MessageRef reader, List<uint8> nbytes, MessageEncoder newMsg)
+    public static void extend(Method.StunMethod method, MessageRef reader, ByteList nbytes, MessageEncoder newMsg)
     {
         Span<uint8> ttoken = reader.token();
 
         nbytes.Clear();
         uint16 methodNum = method.Into();
-        nbytes.Add((uint8)(methodNum >> 8));
-        nbytes.Add((uint8)(methodNum & 0xFF));
-        nbytes.Add(0);
-        nbytes.Add(0);
+        nbytes.AddU32(methodNum);
         nbytes.AddRange(COOKIE);
         nbytes.AddRange(ttoken);
 
@@ -80,7 +76,7 @@ class MessageEncoder
     /// append attribute.
     ///
     /// append attribute to message attribute list.
-    public void appendAttr<T>(T theval) where T : STAttribute
+    public void appendAttr<T>(T theval) where T : STAttribute<T>
     {
         uint16 pootVal = BitConverter.Convert<T, uint16>(theval);
         bytes.Add((uint8)(pootVal >> 8));
@@ -307,7 +303,7 @@ struct MessageRef : IDisposable
 
     public this<T>(T msg) where T : STAttribute<T>
     {
-        List<uint8> msgBytes = scope List<uint8>();
+        ByteList msgBytes = scope ByteList();
         T.encode(msg, msgBytes, Span<uint8>());
         bytes = msgBytes;
         size = (uint16)bytes.Length;
