@@ -3,5 +3,4 @@ Dependencies = {corlib = "*", Beef-Net = "*", BeefCrypto = "*", sead = "*"}
 
 [Project]
 Name = "BeefSturn"
-TargetType = "BeefLib"
-StartupObject = "BeefSturn.Program"
+StartupObject = "BeefSturn.Main"

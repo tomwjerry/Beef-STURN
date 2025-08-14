@@ -36,6 +36,11 @@ struct CfgInterface
     /// you need to manually specify the server external IP
     /// address and service listening port.
     public SocketAddress external;
+
+    public this()
+    {
+        this = default;
+    }
  
     public static Result<CfgInterface, StringView> FromStr(StringView s)
     {
@@ -61,7 +66,7 @@ struct CfgInterface
     }
 }
 
-struct TurnCfg : IDisposable
+class TurnCfg
 {
     /// turn server realm
     ///
@@ -80,12 +85,17 @@ struct TurnCfg : IDisposable
 
     public this()
     {
-        this = default;
         realm = "localhost";
         interfaces = new List<CfgInterface>();
     }
 
-    public void Dispose()
+    public this(TurnCfg cpycfg) : this()
+    {
+        interfaces.Set(cpycfg.interfaces);
+        realm = StringView(cpycfg.realm);
+    }    
+
+    public ~this()
     {
         delete interfaces;
     }
@@ -114,9 +124,8 @@ struct Api
     /// environment.
     public SocketAddress bind;
 
-    public this
+    public this()
     {
-        this = default;
         bind = SocketAddress();
         bind.Family = AF_INET;
         bind.u = SocketAddress.USockAddr();
@@ -124,6 +133,11 @@ struct Api
         bind.u.IPv4.sin_port = 300;
         bind.u.IPv4.sin_addr = in_addr();
         bind.u.IPv4.sin_addr.s_bytes = uint8[4](127, 0, 0, 1);
+    }
+
+    public this(Api apicpy)
+    {
+        bind = apicpy.bind;
     }
 }
 
@@ -161,25 +175,7 @@ enum LogLevel
     }
 }
 
-struct Log
-{
-    /// log level
-    ///
-    /// An enum representing the available verbosity levels of the logger.
-    public LogLevel level;
-
-    public static void Info(StringView msg, params Object[] msgParams)
-    {
-        Console.WriteLine(msg, msgParams);
-    }
-
-    public static void Error(StringView msg, params Object[] msgParams)
-    {
-        Console.WriteLine(msg, msgParams);
-    }
-}
-
-struct Auth : IDisposable
+class Auth
 {
     /// static user password
     ///
@@ -198,37 +194,57 @@ struct Auth : IDisposable
 
     public this()
     {
-        this = default;
         static_credentials = new Dictionary<StringView, StringView>();
         static_auth_secret = "";
     }
 
-    public void Dispose()
+    public this(Auth acpy)
+    {
+        static_credentials = new Dictionary<StringView, StringView>();
+        static_auth_secret = StringView(acpy.static_auth_secret);
+
+        for (let creds in acpy.static_credentials)
+        {
+            static_credentials.Add(creds.key, creds.value);
+        }
+    }
+
+    public ~this()
     {
         delete static_credentials;
     }
 }
 
-struct Config : IDisposable
+class Config
 {
     public TurnCfg turn;
     public Api api;
-    public Log log;
+    public LogLevel log;
     public Auth auth;
+
+    public this()
+    {
+        turn = new TurnCfg();
+        api = Api();
+        log = .Info;
+        auth = new Auth();
+    }
+
+    public this(Config configcpy)
+    {
+        turn = new TurnCfg(configcpy.turn);
+        api = Api(configcpy.api);
+        log = configcpy.log;
+        auth = new Auth(configcpy.auth);
+    }
 
     /// Load configure from config file and command line parameters.
     ///
     /// Load command line parameters, if the configuration file path is
     /// specified, the configuration is read from the configuration file,
     /// otherwise the default configuration is used.
-    public static Result<Config> load(String[] cfgarg)
+    public Result<void> load(String[] cfgarg)
     {
-        Config conf = Config();
-        conf.turn = TurnCfg();
-        conf.api = Api();
-        conf.log = Log();
-        conf.auth = Auth();
-
         // If you want to load config from file, perhaps best way is to make a function that loads the file
         // then set the config variables
 
@@ -241,43 +257,44 @@ struct Config : IDisposable
             {
                 i++;
                 var unamePwd = cfgarg[i].Split('=');
-                conf.auth.static_credentials.Add((unamePwd.GetNext(), unamePwd.GetNext()));
+                auth.static_credentials.Add((unamePwd.GetNext(), unamePwd.GetNext()));
             }
             else if (cfgarg[i] == "--auth-static-auth-secret")
             {
                 i++;
-                conf.auth.static_auth_secret = cfgarg[i];
+                auth.static_auth_secret = cfgarg[i];
             }
             else if (cfgarg[i] == "--log-level")
             {
                 i++;
-                conf.log.level = LogLevel.FromStr(cfgarg[i]);
+                log = LogLevel.FromStr(cfgarg[i]);
             }
             else if (cfgarg[i] == "--api-bind")
             {
                 i++;
-                conf.api.bind = ParseSocketAddress(cfgarg[i]);
+                api.bind = ParseSocketAddress(cfgarg[i]);
             }
             else if (cfgarg[i] == "--turn-realm")
             {
                 i++;
-                conf.turn.realm = cfgarg[i];
+                turn.realm = cfgarg[i];
             }
             else if (cfgarg[i] == "--turn-interfaces")
             {
                 i++;
-                conf.turn.interfaces.Add(CfgInterface.FromStr(cfgarg[i]));
+                turn.interfaces.Add(CfgInterface.FromStr(cfgarg[i]));
             }
         }
 
         // Filters out transport protocols that are not enabled.
         // TODO?
 
-        return .Ok(conf);
+        return .Ok;
     }
 
-    public void Dispose()
+    public ~this()
     {
-        turn.Dispose();
+        delete turn;
+        delete auth;
     }
 }

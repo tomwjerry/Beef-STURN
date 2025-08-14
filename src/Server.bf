@@ -22,7 +22,7 @@ struct ServerStartOptions : IDisposable
     {
         delete service;
         router.Dispose();
-        statistics.Dispose();
+        delete statistics;
     }
 }
 
@@ -57,7 +57,7 @@ class SturnUDP : Server
 
         router = options.router;
         reporter = options.statistics.get_reporter(Transport.UDP);
-        operationer = options.service.get_operationer(options.external, options.external);
+        operationer = new Operationer(options.service.get_serviceContext(options.external, options.external));
         external = options.external;
         statistics = options.statistics;
 
@@ -196,13 +196,13 @@ class SturnUDP : Server
         sendThread.Join();
         
         delete socket;
-        delete recvThread;
-        delete sendThread;
+        //delete recvThread;
+        //delete sendThread;
 
         router.Dispose();
         reporter.Dispose();
-        operationer.Dispose();
-        statistics.Dispose();
+        delete operationer;
+        delete statistics;
     }
 }
 
@@ -227,7 +227,7 @@ class SturnTCP : Server
     ///
     /// This queue only needs to copy the unconsumed data without duplicating
     /// the memory allocation, which will reduce a lot of overhead.
-    struct ExchangeBuffer : IDisposable
+    class ExchangeBuffer
     {
         public (List<uint8>, int)[2] buffers;
         public uint8 index;
@@ -241,7 +241,7 @@ class SturnTCP : Server
             buffers[1].1 = 0;
         }
 
-        public void Dispose()
+        public ~this()
         {
             delete buffers[0].0;
             delete buffers[1].0;
@@ -264,15 +264,15 @@ class SturnTCP : Server
             return buffers[index].1;
         }
 
-        /// The buffer does not automatically advance the cursor as BytesMut
+        /// The buffer does not automatically advance the cursor as Bytes
         /// does, and you need to manually advance the length of the data
         /// written.
-        public void advance(int len) mut
+        public void advance(int len)
         {
             buffers[index].1 += len;
         }
 
-        public Span<uint8> split(int len) mut
+        public Span<uint8> split(int len)
         {
             // The length of the separation cannot be greater than the length of the data.
             Debug.Assert(len <= buffers[index].1);
@@ -381,7 +381,7 @@ class SturnTCP : Server
             thread = new Thread(new () => { messageHandlerThread(socketThreads.Count); }),
             mon = new Monitor(),
             receiver = router.get_receiver(aSocket.PeerAddress, aSocket),
-            operationer = service.get_operationer(aSocket.PeerAddress, external),
+            operationer = new Operationer(service.get_serviceContext(aSocket.PeerAddress, external)),
             running = true
         });
 
@@ -390,7 +390,7 @@ class SturnTCP : Server
             thread = new Thread(new () => { messageReaderThread(socketThreads.Count); }),
             mon = new Monitor(),
             receiver = router.get_receiver(aSocket.PeerAddress, aSocket),
-            operationer = service.get_operationer(aSocket.PeerAddress, external),
+            operationer = new Operationer(service.get_serviceContext(aSocket.PeerAddress, external)),
             running = true
         });
     }
@@ -447,7 +447,7 @@ class SturnTCP : Server
     {
         Sessions ses;
         service.get_sessions(out ses);
-        ExchangeBuffer buffer = ExchangeBuffer();
+        ExchangeBuffer buffer = scope ExchangeBuffer();
         SocketAddress address = socketThreads[sockThreadIdx].receiver.sock.PeerAddress;
         SessionAddr session_addr = SessionAddr()
         {
@@ -565,7 +565,7 @@ class SturnTCP : Server
                 delete socketThreads[i].mon;
                 socketThreads[i].thread.Join();
                 delete socketThreads[i].thread;
-                socketThreads[i].operationer.Dispose();
+                delete socketThreads[i].operationer;
                 socketThreads.RemoveAt(i);
             }
         }
@@ -581,19 +581,19 @@ class SturnTCP : Server
             socketThreads[i].running = false;
             delete socketThreads[i].mon;
             socketThreads[i].thread.Join();
-            delete socketThreads[i].thread;
-            socketThreads[i].operationer.Dispose();
+            //delete socketThreads[i].thread;
+            delete socketThreads[i].operationer;
             socketThreads.RemoveAt(i);
         }
 
         delete socketThreads;
         listenerThreadObj.Join();
-        delete listenerThreadObj;
+        //delete listenerThreadObj;
 
         delete listener;
 
         router.Dispose();
         reporter.Dispose();
-        statistics.Dispose();
+        delete statistics;
     }
 }

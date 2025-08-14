@@ -30,7 +30,7 @@ struct ServiceContext : IDisposable
     {
         this = default;
         interfaces = new List<SocketAddress>();
-        observer = new Observer(Config(), Statistics());
+        observer = new Observer(scope Config(), scope Statistics());
         sessions = new Sessions(observer);
     }
 
@@ -203,7 +203,7 @@ struct Response
 }
 
 /// process udp message and return message + address
-struct Operationer : IDisposable
+class Operationer
 {
     public ServiceContext service;
     public SessionAddr address;
@@ -234,7 +234,17 @@ struct Operationer : IDisposable
         this.service = service;
     }
 
-    public void Dispose()
+    public this(Operationer copyop)
+    {
+        address = copyop.address;
+        bytes = new ByteList();
+        bytes.EnsureCapacity(4096, true);
+        bytes.Set(copyop.bytes);
+        service = copyop.service;
+        decoder = copyop.decoder;
+    }
+
+    public ~this()
     {
         delete bytes;
         service.Dispose();
@@ -354,7 +364,7 @@ struct Operationer : IDisposable
     public Result<Response, StunError> route(
         Span<uint8> bytes,
         SocketAddress address
-    ) mut
+    )
     {
         this.address.address = address;
 

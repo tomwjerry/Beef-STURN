@@ -116,7 +116,7 @@ struct Endpoint
 ///
 /// This timer does not stack automatically and needs to be stacked externally
 /// and manually.
-struct STTimer
+class STTimer
 {
     private uint64 timeval;
 
@@ -130,7 +130,7 @@ struct STTimer
         return timeval;
     }
 
-    public uint64 add() mut
+    public uint64 add()
     {
         Interlocked.Increment(ref timeval, .Relaxed);
 
@@ -214,7 +214,6 @@ class State
         DeleteDictionaryAndValues!(sessions);
         delete port_mapping_table;
         delete address_nonce_table;
-        delete port_mapping_table;
         DeleteDictionaryAndValues!(port_relay_table);
         DeleteDictionaryAndValues!(channel_relay_table);
         delete port_allocate_pool;
@@ -368,14 +367,13 @@ class Sessions
 
     public this(Sessions copysess) : this(copysess.observer)
     {
-        this.timer = copysess.timer;
         this.state = new State(copysess.state);
     }
 
     public this(Observer observer)
     {
         state = new State();
-        timer = STTimer();
+        timer = new STTimer();
         this.observer = new Observer(observer);
         running = true;
         rnd = new Random();
@@ -444,7 +442,7 @@ class Sessions
         delete rnd;
         running = false;
         bgThread.Join();
-        delete bgThread;
+        //delete bgThread;
     }
 
     private void remove_session(Span<SessionAddr> addrs)
@@ -891,11 +889,11 @@ class PortAllocatePools
     }
 
     /// random assign a port.
-    public uint16 alloc() mut
+    public uint16 alloc()
     {
         return alloc(null);
     }
-    public uint16 alloc(int? start_index) mut
+    public uint16 alloc(int? start_index)
     {
         int? index = null;
         int start = 0;
@@ -1005,7 +1003,7 @@ class PortAllocatePools
     }
 
     /// restore port in the buckets.
-    public bool restore(uint16 port) mut
+    public bool restore(uint16 port)
     {
         Debug.Assert(port >= port_range().0 && port <= port_range().1);
 

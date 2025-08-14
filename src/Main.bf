@@ -11,7 +11,7 @@ class BeefSturn
 
     public Result<void> StartServer(Config config)
     {
-        Statistics statistics = Statistics();
+        Statistics statistics = scope Statistics();
         Service lservice = scope Service(
             "beefsturn",
             config.turn.realm,
@@ -81,7 +81,8 @@ static class Main
 {
     static void Main(String[] args)
     {
-        Config config = Config();
+        Config config = new Config();
+        config.load(args);
         BeefSturn bsturn = new BeefSturn();
     
         bsturn.StartServer(config);

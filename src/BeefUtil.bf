@@ -95,3 +95,20 @@ class ByteList : List<uint8>
         return ReadU64(bytes, 0);
     }
 }
+
+class Log
+{
+    /// log level
+    ///
+    /// An enum representing the available verbosity levels of the logger.
+
+    public static void Info(StringView msg, params Object[] msgParams)
+    {
+        Console.WriteLine(msg, msgParams);
+    }
+
+    public static void Error(StringView msg, params Object[] msgParams)
+    {
+        Console.WriteLine(msg, msgParams);
+    }
+}

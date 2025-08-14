@@ -16,15 +16,15 @@ enum Stats
 
 interface Number
 {
-    public void add(uint64 value) mut;
+    public void add(uint64 value);
     public uint64 get();
 }
 
-struct Count : Number
+class Count : Number
 {
-    uint64 num;
+    private uint64 num;
 
-    public void add(uint64 value) mut
+    public void add(uint64 value)
     {
         Interlocked.Add(ref num, value, .Relaxed);
     }
@@ -35,7 +35,7 @@ struct Count : Number
 }
 
 /// Worker independent statisticsing statistics
-struct Counts
+class Counts
 {
     public Number received_bytes;
     public Number send_bytes;
@@ -45,11 +45,20 @@ struct Counts
 
     public this()
     {
-        received_bytes = Count();
-        send_bytes = Count();
-        received_pkts = Count();
-        send_pkts = Count();
-        error_pkts = Count();
+        received_bytes = new Count();
+        send_bytes = new Count();
+        received_pkts = new Count();
+        send_pkts = new Count();
+        error_pkts = new Count();
+    }
+
+    public ~this()
+    {
+        delete received_bytes;
+        delete send_bytes;
+        delete received_pkts;
+        delete send_pkts;
+        delete error_pkts;
     }    
 
     public void add(Stats payload)
@@ -66,10 +75,10 @@ struct Counts
 }
 
 /// worker cluster statistics
-struct Statistics : IDisposable
+class Statistics
 {
-    Dictionary<BeefSturn.Turn.SessionAddr, Counts> statsDict;
-    RWLock statsDictLock;
+    public Dictionary<BeefSturn.Turn.SessionAddr, Counts> statsDict;
+    public RWLock statsDictLock;
 
     public this()
     {
@@ -77,9 +86,17 @@ struct Statistics : IDisposable
         statsDictLock = new RWLock();
     }
 
-    public void Dispose()
+    public this(Statistics copyStats) : this()
     {
-        delete statsDict;
+        for (let csdict in copyStats.statsDict)
+        {
+            statsDict.Add(csdict.key, csdict.value);
+        }    
+    }
+
+    public ~this()
+    {
+        DeleteDictionaryAndValues!(statsDict);
         delete statsDictLock;
     }
 
@@ -100,7 +117,7 @@ struct Statistics : IDisposable
         {
             statsDict.Add(
                 addr,
-                Counts()
+                new Counts()
             );
         }
     }

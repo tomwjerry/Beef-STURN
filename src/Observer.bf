@@ -27,21 +27,21 @@ class Observer
 
     public this(Config config, Statistics statistics)
     {
-        this.statistics = statistics;
-        this.config = config;
+        this.statistics = new Statistics(statistics);
+        this.config = new Config(config);
     }
 
     public this(Observer copyobs)
     {
         this.config = copyobs.config;
-        this.statistics = copyobs.statistics;
+        this.statistics = new Statistics(copyobs.statistics);
     }
 
     public ~this()
     {
         obsEv.Dispose();
-        statistics.Dispose();
-        config.Dispose();
+        delete statistics;
+        delete config;
     }
 
     public StringView get_password(StringView username)

@@ -16,7 +16,7 @@ class Service
     public this()
     {
         interfaces = new List<SocketAddress>();
-        observer = new Observer(Config(), Statistics());
+        observer = new Observer(scope Config(), scope Statistics());
         sessions = new Sessions(observer);
     }
 
@@ -52,7 +52,7 @@ class Service
     }
 
     /// Get operationer.
-    public Operationer get_operationer(SocketAddress endpoint, SocketAddress sainterface)
+    public ServiceContext get_serviceContext(SocketAddress endpoint, SocketAddress sainterface)
     {
         ServiceContext sc = ServiceContext(interfaces, observer, sessions);
         sc.software = software;
@@ -60,6 +60,6 @@ class Service
         sc.sainterface = sainterface;
         sc.endpoint = endpoint;
 
-        return Operationer(sc);
+        return sc;
     }
 }
