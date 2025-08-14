@@ -40,6 +40,8 @@ class Observer
     public ~this()
     {
         obsEv.Dispose();
+        statistics.Dispose();
+        config.Dispose();
     }
 
     public StringView get_password(StringView username)

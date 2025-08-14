@@ -209,7 +209,7 @@ struct Auth : IDisposable
     }
 }
 
-struct Config
+struct Config : IDisposable
 {
     public TurnCfg turn;
     public Api api;
@@ -240,10 +240,8 @@ struct Config
             if (cfgarg[i] == "--auth-static-credentials")
             {
                 i++;
-                if (Cli.parse_credential(cfgarg[i]) case .Ok(let cred))
-                {
-                    conf.auth.static_credentials.Add(cred);
-                }
+                var unamePwd = cfgarg[i].Split('=');
+                conf.auth.static_credentials.Add((unamePwd.GetNext(), unamePwd.GetNext()));
             }
             else if (cfgarg[i] == "--auth-static-auth-secret")
             {
@@ -277,50 +275,9 @@ struct Config
 
         return .Ok(conf);
     }
-}
-
-struct Cli : IDisposable
-{
-    /// Specify the configuration file path
-    ///
-    /// Example: --config /etc/turn-rs/config.toml
-    public StringView config;
-    /// Static user password
-    ///
-    /// Example: --auth-static-credentials test=test
-    public List<(StringView, StringView)> auth_static_credentials;
-    /// Static authentication key value (string) that applies only to the TURN
-    /// REST API
-    public StringView auth_static_auth_secret;
-    /// An enum representing the available verbosity levels of the logger
-    public LogLevel log_level;
-    /// This option specifies the http server binding address used to control
-    /// the turn server
-    public SocketAddress? api_bind;
-    /// TURN server realm
-    public StringView turn_realm;
-    /// TURN server listen interfaces
-    ///
-    /// Example: --turn-interfaces udp@127.0.0.1:3478/127.0.0.1:3478
-    public List<CfgInterface> turn_interfaces;
-
-    public this()
-    {
-        this = default;
-        auth_static_credentials = new List<(StringView, StringView)>();
-        turn_interfaces = new List<CfgInterface>();
-    }
 
     public void Dispose()
     {
-        delete auth_static_credentials;
-        delete turn_interfaces;
-    }
-
-    // [username]:[password]
-    public static Result<(StringView, StringView), StringView> parse_credential(StringView s)
-    {
-        var unamePwd = s.Split('=');
-        return .Ok((unamePwd.GetNext(), unamePwd.GetNext()));
+        turn.Dispose();
     }
 }

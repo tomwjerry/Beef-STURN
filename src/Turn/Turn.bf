@@ -39,7 +39,7 @@ class Service
         this.sessions = new Sessions(copyser.sessions);
     }
 
-    public void Dispose()
+    public ~this()
     {
         delete interfaces;
         delete sessions;
