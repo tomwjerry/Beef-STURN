@@ -88,6 +88,8 @@ struct Request : IDisposable
     public void Dispose()
     {
         delete bytes;
+        message.Dispose();
+        service.Dispose();
     }
 
     public bool verify_ip(SocketAddress address)

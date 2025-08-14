@@ -21,6 +21,8 @@ struct ServerStartOptions : IDisposable
     public void Dispose()
     {
         delete service;
+        router.Dispose();
+        statistics.Dispose();
     }
 }
 
@@ -183,6 +185,25 @@ class SturnUDP : Server
 
         Log.Error("udp server close: interface={}", receiver.sock.LocalAddress);
     }
+
+    public ~this()
+    {
+        running = false;
+
+        socket.Disconnect();
+
+        recvThread.Join();
+        sendThread.Join();
+        
+        delete socket;
+        delete recvThread;
+        delete sendThread;
+
+        router.Dispose();
+        reporter.Dispose();
+        operationer.Dispose();
+        statistics.Dispose();
+    }
 }
 
 class SturnTCP : Server
@@ -291,18 +312,17 @@ class SturnTCP : Server
         public bool running;
     }
 
-    Thread listenerThreadObj;
-    Thread bufferThreadObj;
-    TcpConnection listener;
-    bool running;
+    private Thread listenerThreadObj;
+    private TcpConnection listener;
+    private bool running;
 
-    Router router;
-    StatisticsReporter reporter;
-    Service service;
-    SocketAddress external;
-    Statistics statistics;
+    private Router router;
+    private StatisticsReporter reporter;
+    private Service service;
+    private SocketAddress external;
+    private Statistics statistics;
 
-    List<SocketThread> socketThreads;
+    private List<SocketThread> socketThreads;
 
     /// tcp socket process thread.
     ///
@@ -535,7 +555,7 @@ class SturnTCP : Server
         Log.Info("tcp socket disconnect: addr={?}, interface={?}", address, socketThreads[sockThreadIdx].receiver.sock.LocalAddress);
     }
 
-    void disconnectClient(Socket dissocket)
+    private void disconnectClient(Socket dissocket)
     {
         for (int i = socketThreads.Count - 1; i >= 0; i--)
         {
@@ -543,10 +563,37 @@ class SturnTCP : Server
             {
                 socketThreads[i].running = false;
                 delete socketThreads[i].mon;
+                socketThreads[i].thread.Join();
                 delete socketThreads[i].thread;
                 socketThreads[i].operationer.Dispose();
                 socketThreads.RemoveAt(i);
             }
         }
+    }
+
+    public ~this()
+    {
+        running = false;
+        listener.Disconnect();
+
+        for (int i = socketThreads.Count - 1; i >= 0; i--)
+        {
+            socketThreads[i].running = false;
+            delete socketThreads[i].mon;
+            socketThreads[i].thread.Join();
+            delete socketThreads[i].thread;
+            socketThreads[i].operationer.Dispose();
+            socketThreads.RemoveAt(i);
+        }
+
+        delete socketThreads;
+        listenerThreadObj.Join();
+        delete listenerThreadObj;
+
+        delete listener;
+
+        router.Dispose();
+        reporter.Dispose();
+        statistics.Dispose();
     }
 }

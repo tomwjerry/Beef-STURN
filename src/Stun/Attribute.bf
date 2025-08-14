@@ -456,23 +456,18 @@ interface STAttribute<T> where T: STAttribute<T>
 /// the OpaqueString profile [RFC8265].  A compliant implementation MUST
 /// be able to parse a UTF-8-encoded sequence of 763 or fewer octets to
 /// be compatible with [RFC5389].
-struct UserName : STAttribute<UserName>, IDisposable
+struct UserName : STAttribute<UserName>
 {
-    public String username;
+    public StringView username;
 
     public this()
     {
-        username = new String();
+        this = default;
     }
 
     public this(StringView setUname)
     {
-        username = new String(setUname);
-    }
-
-    public void Dispose()
-    {
-        delete username;
+        username = setUname;
     }
 
     public static AttrKind KIND
@@ -483,7 +478,7 @@ struct UserName : STAttribute<UserName>, IDisposable
     public static void encode(UserName attr, ByteList bytes, Span<uint8> token)
     {
         UserName attrspec = (UserName)attr;
-        bytes.AddRange(Span<char8>(attrspec.username.CStr(), attrspec.username.Length).ToRawData());
+        bytes.AddRange(Span<char8>(attrspec.username.Ptr, attrspec.username.Length).ToRawData());
     }
 
     public static Result<UserName, STError> decode(Span<uint8> bytes, Span<uint8> token)
@@ -546,23 +541,18 @@ struct Data : STAttribute<Data>
 /// credentials are being used for authentication.  Presence in certain
 /// error responses indicates that the server wishes the client to use a
 /// long-term credential in that realm for authentication.
-struct Realm : STAttribute<Realm>, IDisposable
+struct Realm : STAttribute<Realm>
 {
-    public String realm;
+    public StringView realm;
 
     public this()
     {
-        realm = new String();
+        this = default;
     }
 
     public this(StringView setRealm)
     {
-        realm = new String(setRealm);
-    }
-
-    public void Dispose()
-    {
-        delete realm;
+        realm = setRealm;
     }
 
     public static AttrKind KIND
@@ -573,7 +563,7 @@ struct Realm : STAttribute<Realm>, IDisposable
     public static void encode(Realm attr, ByteList bytes, Span<uint8> token)
     {
         Realm attrspec = (Realm)attr;
-        bytes.AddRange(Span<char8>(attrspec.realm.CStr(), attrspec.realm.Length).ToRawData());
+        bytes.AddRange(Span<char8>(attrspec.realm.Ptr, attrspec.realm.Length).ToRawData());
     }
 
     public static Result<Realm, STError> decode(Span<uint8> bytes, Span<uint8> token)
@@ -593,23 +583,18 @@ struct Realm : STAttribute<Realm>, IDisposable
 /// when encoding them and a long as 763 bytes when decoding them).  See
 /// Section 5.4 of [RFC7616] for guidance on selection of nonce values in
 /// a server.
-struct Nonce : STAttribute<Nonce>, IDisposable
+struct Nonce : STAttribute<Nonce>
 {
-    public String strVal;
+    public StringView strVal;
 
     public this()
     {
-        strVal = new String();
+        this = default;
     }
 
     public this(StringView setStrVal)
     {
-        strVal = new String(setStrVal);
-    }
-
-    public void Dispose()
-    {
-        delete strVal;
+        strVal = setStrVal;
     }
 
     public static AttrKind KIND
@@ -620,7 +605,7 @@ struct Nonce : STAttribute<Nonce>, IDisposable
     public static void encode(Nonce attr, ByteList bytes, Span<uint8> token)
     {
         Nonce attrspec = (Nonce)attr;
-        bytes.AddRange(Span<char8>(attrspec.strVal.CStr(), attrspec.strVal.Length).ToRawData());
+        bytes.AddRange(Span<char8>(attrspec.strVal.Ptr, attrspec.strVal.Length).ToRawData());
     }
 
     public static Result<Nonce, STError> decode(Span<uint8> bytes, Span<uint8> token)
@@ -640,23 +625,18 @@ struct Nonce : STAttribute<Nonce>, IDisposable
 /// [RFC3629] sequence of fewer than 128 characters (which can be as long
 /// as 509 when encoding them and as long as 763 bytes when decoding
 /// them).
-struct Software : STAttribute<Software>, IDisposable
+struct Software : STAttribute<Software>
 {
-    String strVal;
+    StringView strVal;
 
     public this()
     {
-        strVal = new String();
+        this = default;
     }
 
     public this(StringView setStrVal)
     {
-        strVal = new String(setStrVal);
-    }
-
-    public void Dispose()
-    {
-        delete strVal;
+        strVal = setStrVal;
     }
 
     public static AttrKind KIND
@@ -667,7 +647,7 @@ struct Software : STAttribute<Software>, IDisposable
     public static void encode(Software attr, ByteList bytes, Span<uint8> token)
     {
         Software attrspec = (Software)attr;
-        bytes.AddRange(Span<char8>(attrspec.strVal.CStr(), attrspec.strVal.Length).ToRawData());
+        bytes.AddRange(Span<char8>(attrspec.strVal.Ptr, attrspec.strVal.Length).ToRawData());
     }
 
     public static Result<Software, STError> decode(Span<uint8> bytes, Span<uint8> token)
@@ -928,7 +908,7 @@ struct MappedAddress : STAttribute<MappedAddress>
 
 /// The RESPONSE-ORIGIN attribute is inserted by the server and indicates
 /// the source IP address and port the response was sent from.  It is
-/// useful for detecting double NAT configurations.  It is only present
+/// useful for detecting double NAT urations.  It is only present
 /// in Binding Responses.
 struct ResponseOrigin : STAttribute<ResponseOrigin>
 {
@@ -1746,33 +1726,26 @@ struct DontFragment : STAttribute<DontFragment>
 /// token is opaque to the client, and the client MUST NOT examine the token.
 /// The ACCESS-TOKEN attribute is a comprehension-required attribute (see
 /// Section 15 from [RFC5389]).
-struct AccessToken : STAttribute<AccessToken>, IDisposable
+struct AccessToken : STAttribute<AccessToken>
 {
-    public String nonce;
-    public String mac_key;
+    public StringView nonce;
+    public StringView mac_key;
     public uint64 timestamp;
     public uint lifetime;
 
     public this()
     {
-        nonce = new String();
-        mac_key = new String();
+        this = default;
         timestamp = 0;
         lifetime = 0;
     }
 
     public this(StringView setNonce, StringView setMacKey, uint64 setTimestamp, uint setLifetime)
     {
-        nonce = new String(setNonce);
-        mac_key = new String(setMacKey);
+        nonce = setNonce;
+        mac_key = setMacKey;
         timestamp = setTimestamp;
         lifetime = setLifetime;
-    }
-
-    public void Dispose()
-    {
-        delete nonce;
-        delete mac_key;
     }
 
     public static AttrKind KIND
@@ -1787,14 +1760,14 @@ struct AccessToken : STAttribute<AccessToken>, IDisposable
         // nonce_length:  Length of the nonce field.  The length of nonce for AEAD
         // algorithms is explained in [RFC5116].
         bytes.AddU16((uint16)acattr.nonce.Length);
-        bytes.AddRange(Span<char8>(acattr.nonce.CStr(), acattr.nonce.Length).ToRawData());
+        bytes.AddRange(Span<char8>(acattr.nonce.Ptr, acattr.nonce.Length).ToRawData());
 
         // key_length:  Length of the session key in octets.  The key length of 160 bits
         // MUST be supported (i.e., only the 160-bit key is used by HMAC-SHA-1 for
         // message integrity of STUN messages).  The key length facilitates the hash
         // agility plan discussed in Section 16.3 of [RFC5389].
         bytes.AddU16((uint16)acattr.mac_key.Length);
-        bytes.AddRange(Span<char8>(acattr.mac_key.CStr(), acattr.mac_key.Length).ToRawData());
+        bytes.AddRange(Span<char8>(acattr.mac_key.Ptr, acattr.mac_key.Length).ToRawData());
 
         // timestamp:  64-bit unsigned integer field containing a timestamp.
         bytes.AddU64(acattr.timestamp);
@@ -1872,23 +1845,18 @@ struct AccessToken : STAttribute<AccessToken>, IDisposable
 /// comprehend THIRD-PARTY-AUTHORIZATION, it MUST ensure that third-party
 /// authorization takes precedence over first-party authentication (as
 /// explained in Section 10 of [RFC5389]).
-struct ThirdPartyAuathorization : STAttribute<ThirdPartyAuathorization>, IDisposable
+struct ThirdPartyAuathorization : STAttribute<ThirdPartyAuathorization>
 {
-    public String server_name;
+    public StringView server_name;
 
     public this()
     {
-        server_name = new String();
+        this = default;
     }
 
     public this(StringView setServerName)
     {
-        server_name = new String(setServerName);
-    }
-
-    public void Dispose()
-    {
-        delete server_name;
+        server_name = setServerName;
     }
 
     /// The KIND of this attribute.
@@ -1900,8 +1868,7 @@ struct ThirdPartyAuathorization : STAttribute<ThirdPartyAuathorization>, IDispos
     public static void encode(ThirdPartyAuathorization attr, ByteList bytes, Span<uint8> token)
     {
         // Encode the server name as UTF-8
-        String server_name = ((ThirdPartyAuathorization)attr).server_name;
-        bytes.AddRange(Span<char8>(server_name.CStr(), server_name.Length).ToRawData());
+        bytes.AddRange(Span<char8>(attr.server_name.Ptr, attr.server_name.Length).ToRawData());
     }
 
     public static Result<ThirdPartyAuathorization, STError> decode(Span<uint8> bytes, Span<uint8> token)

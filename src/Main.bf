@@ -7,7 +7,7 @@ using BeefSturn.Turn;
 class BeefSturn
 {
     private List<Server> runners;
-    private Service service;
+    private ServerStartOptions options;
 
     public Result<void> StartServer(Config config)
     {
@@ -34,10 +34,7 @@ class BeefSturn
     /// each thread processes udp data separately.
     public Result<void> StartServer(Config config, Statistics statistics, Service lservice)
     {
-        Router router = Router();
-
         runners = new List<Server>();
-        service = new Service();
 
         for (let intobj in config.turn.interfaces)
         {
@@ -45,11 +42,11 @@ class BeefSturn
             //external,
             //bind,
         
-            ServerStartOptions options = ServerStartOptions()
+            options = ServerStartOptions()
             {
                 statistics = statistics,
-                service = service,
-                router = router,
+                service = new Service(lservice),
+                router = Router(),
                 external = intobj.external,
                 bind = intobj.bind
             };
@@ -74,7 +71,7 @@ class BeefSturn
     public Result<void> stop()
     {
         DeleteContainerAndItems!(runners);
-        delete service;
+        options.Dispose();
 
         return .Ok;
     }
