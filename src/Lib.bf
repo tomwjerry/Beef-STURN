@@ -18,7 +18,7 @@ static class Lib
             scope Observer(config, statistics)
         );
     
-        server.start(config, statistics, service);
+        StartServer(config, statistics, service);
     
         // The turn server is non-blocking after it runs and needs to be kept from
         // exiting immediately if the api server is not enabled.

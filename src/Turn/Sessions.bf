@@ -363,27 +363,25 @@ class Sessions
     public Observer observer;
     public bool running;
     public Random rnd;
+    public Thread bgThread;
 
-    public this(Sessions copysess)
+    public this(Sessions copysess) : this(copysess.observer)
     {
         this.timer = copysess.timer;
         this.state = new State(copysess.state);
-        this.observer = new Observer(copysess.observer);
-        running = true;
-        rnd = new Random();
     }
 
     public this(Observer observer)
     {
         state = new State();
         timer = STTimer();
-        observer = observer;
+        this.observer = new Observer(observer);
         running = true;
         rnd = new Random();
 
         // This is a background thread that silently handles expiring sessions and
         // cleans up session information when it expires.
-        Thread t = new Thread(new() =>
+        bgThread = new Thread(new() =>
         {
             List<SessionAddr> address = scope List<SessionAddr>(255);
 
@@ -443,6 +441,9 @@ class Sessions
         delete observer;
         delete state;
         delete rnd;
+        running = false;
+        bgThread.Join();
+        delete bgThread;
     }
 
     private void remove_session(Span<SessionAddr> addrs)

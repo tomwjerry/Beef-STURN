@@ -558,7 +558,7 @@ static
     ///
     /// create a specified number of threads,
     /// each thread processes udp data separately.
-    public static Result<void> start(Config config, Statistics statistics, Service service)
+    public static Result<void> StartServer(Config config, Statistics statistics, Service service)
     {
         Router router = Router();
 

@@ -3,7 +3,6 @@ using System;
 using System.Collections;
 using System.IO;
 using Beef_Net;
-using JetFistGames.Toml;
 
 enum Transport
 {
@@ -230,81 +229,8 @@ struct Config
         conf.log = Log();
         conf.auth = Auth();
 
-        StringView cfgfile = "";
-
-        for (int i = 0; i < cfgarg.Count; i++)
-        {
-            if (cfgarg[i] == "--config")
-            {
-                cfgfile = cfgarg[i + 1];
-                break;
-            }
-        }
-
-        if (cfgfile.Length > 3)
-        {
-            var file = scope String();
-            let fileReadResult = File.ReadAllText(cfgfile, file);
-
-            if (fileReadResult case .Err)
-            {
-            	return .Err;
-            }
-
-            let tomlCfg = TomlSerializer.Read(file);
-
-            if (tomlCfg case .Ok(let doc))
-            {
-                if (doc["turn"].GetTable() case .Ok(let turnTable))
-                {
-                    conf.turn.realm = turnTable["realm"].GetString().Value;
-
-                    if (turnTable["interfaces"].GetArray() case .Ok(let interfaces))
-                    {
-                        for (int i = 0; i < interfaces.Count; i++)
-                        {
-                            StringView bindStr = interfaces[i]["bind"].GetString().Value;
-                            uint16 bindPort = UInt8.Parse(bindStr.Substring(bindStr.LastIndexOf(':')));
-
-                            conf.turn.interfaces.Add(CfgInterface()
-                            {
-                                transport = Transport.FromStr(interfaces[i]["transport"].GetString().Value).Value,
-                                bind = (bindPort, bindStr.Substring(0, bindStr.LastIndexOf(':'))),
-                                external = ParseSocketAddress(interfaces[i]["external"].GetString().Value)
-                            });
-                        }
-                    }
-                }
-
-                if (doc["api"].GetTable() case .Ok(let apiTable))
-                {
-                    conf.api.bind = ParseSocketAddress(apiTable["bind"].GetString().Value);
-                }   
-
-                if (doc["log"].GetTable() case .Ok(let logTable))
-                {
-                    conf.log.level = LogLevel.FromStr(logTable["level"].GetString().Value);
-                }
-
-                if (doc["auth"].GetTable() case .Ok(let authTable))
-                {
-                    conf.auth.static_auth_secret = authTable["static_auth_secret"].GetString().Value;
-
-                    if (authTable["static_credentials"].GetArray() case .Ok(let credentials))
-                    {
-                        for (int i = 0; i < credentials.Count; i++)
-                        {
-                            let creds = Cli.parse_credential(credentials[i].GetString().Value);
-                            conf.auth.static_credentials.Add(creds.Value);
-                        }
-                    }
-                }
-
-                delete doc;
-            }
-
-            return .Err;
-        }
+        // If you want to load config from file, perhaps best way is to make a function that loads the file
+        // then set the config variables
 
         // Command line arguments have a high priority and override configuration file
         // options; here they are used to replace the configuration parsed out of the

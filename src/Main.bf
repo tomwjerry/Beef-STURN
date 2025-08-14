@@ -8,6 +8,6 @@ static class Main
     {
         Config config = Config();
     
-        turn_server.startup(config);
+        Lib.startup(config);
     }
 }
