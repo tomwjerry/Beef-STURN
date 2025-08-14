@@ -168,7 +168,6 @@ class State
         sessions = new Dictionary<SessionAddr, TurnSession>((int32)PortAllocatePools.capacity());
         port_mapping_table = new Dictionary<uint16, SessionAddr>((int32)PortAllocatePools.capacity());
         address_nonce_table = new Dictionary<SessionAddr, (StringView, uint64)>((int32)PortAllocatePools.capacity());
-        port_mapping_table = new Dictionary<uint16, SessionAddr>((int32)PortAllocatePools.capacity());
         port_relay_table = new Dictionary<SessionAddr, Dictionary<uint16, Endpoint>>((int32)PortAllocatePools.capacity());
         channel_relay_table = new Dictionary<SessionAddr, Dictionary<uint16, Endpoint>>((int32)PortAllocatePools.capacity());
 
@@ -433,16 +432,17 @@ class Sessions
                 Thread.Sleep(1000);
             }
         });
+        bgThread.Start();
     }
 
     public ~this()
     {
+        running = false;
+        bgThread.Join();
         delete observer;
         delete state;
         delete rnd;
-        running = false;
-        bgThread.Join();
-        //delete bgThread;
+        delete timer;
     }
 
     private void remove_session(Span<SessionAddr> addrs)

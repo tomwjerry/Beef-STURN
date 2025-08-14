@@ -68,7 +68,7 @@ class BeefSturn
         return .Ok;
     }
 
-    public Result<void> stop()
+    public Result<void> StopServer()
     {
         DeleteContainerAndItems!(runners);
         options.Dispose();
@@ -81,10 +81,19 @@ static class Main
 {
     static void Main(String[] args)
     {
-        Config config = new Config();
+        Config config = scope Config();
         config.load(args);
-        BeefSturn bsturn = new BeefSturn();
+        BeefSturn bsturn = scope BeefSturn();
     
         bsturn.StartServer(config);
+
+        String buf = scope String();
+        while (buf != "q")
+        {
+            buf.Clear();
+            Console.ReadLine(buf);
+        }
+
+        bsturn.StopServer();
     }
 }

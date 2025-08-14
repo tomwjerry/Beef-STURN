@@ -33,7 +33,7 @@ class Observer
 
     public this(Observer copyobs)
     {
-        this.config = copyobs.config;
+        this.config = new Config(copyobs.config);
         this.statistics = new Statistics(copyobs.statistics);
     }
 

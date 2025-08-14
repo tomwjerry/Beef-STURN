@@ -68,7 +68,7 @@ class RWLock
         while (!quit && (reads > 0 || write))
         {
             Interlocked.Fence();
-            Thread.Sleep(100);
+            Thread.Sleep(9);
         }
 
         mon.Enter();
