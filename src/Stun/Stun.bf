@@ -83,7 +83,7 @@ class Method
     public static readonly StunMethod SEND_INDICATION = StunMethod.SendIndication;
     public static readonly StunMethod DATA_INDICATION = StunMethod.DataIndication;
 
-    /// STUN StunMethods Registry
+    /// @brief STUN StunMethods Registry
     ///
     /// [RFC5389]: https://datatracker.ietf.org/doc/html/rfc5389
     /// [RFC8489]: https://datatracker.ietf.org/doc/html/rfc8489
@@ -297,9 +297,14 @@ struct Attributes : IDisposable
     }
 }
 
-struct Decoder
+struct Decoder : IDisposable
 {
     public Attributes attrs;
+
+    public void Dispose()
+    {
+        attrs.Dispose();
+    }
 
     public Result<Payload, StunError> decode(Span<uint8> bytes)
     {

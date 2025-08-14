@@ -16,14 +16,18 @@ class Refresh
             message.appendAttr<ErrorCode>(ErrorCode(StunRespError.from(err)));
             if (message.flush(null) case .Err(let terr))
             {
+                req.Dispose();
                 return .Err(terr);
             }
         }
 
+        Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
+
         return Response()
         {
             method = ResponseMethod.Stun(.REFRESH_ERROR),
-            bytes = req.bytes
+            bytes = bytes
         };
     }
 
@@ -36,18 +40,22 @@ class Refresh
             message.appendAttr<Lifetime>(Lifetime(lifetime));
             if (message.flush(Digest(integrity)) case .Err(let terr))
             {
+                req.Dispose();
                 return .Err(terr);
             }
         }
 
+        Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
+
         return Response()
         {
             method = ResponseMethod.Stun(.REFRESH_RESPONSE),
-            bytes = req.bytes
+            bytes = bytes
         };
     }
 
-    /// process refresh request
+    /// @brief process refresh request
     ///
     /// If the server receives a Refresh Request with a REQUESTED-ADDRESS-
     /// FAMILY attribute and the attribute value does not match the address

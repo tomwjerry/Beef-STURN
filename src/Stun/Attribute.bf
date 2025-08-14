@@ -258,7 +258,7 @@ class Addr
     }
 }
 
-/// STUN Attributes Registry
+/// @brief STUN Attributes Registry
 ///
 /// [RFC8126]: https://datatracker.ietf.org/doc/html/rfc8126
 /// [RFC5389]: https://datatracker.ietf.org/doc/html/rfc5389
@@ -942,7 +942,7 @@ struct ResponseOrigin : STAttribute<ResponseOrigin>
     }
 }
 
-/// The following error codes, along with their recommended reason
+/// @brief The following error codes, along with their recommended reason
 /// phrases, are defined:
 ///
 /// 300  Try Alternate: The client should contact an alternate server for
@@ -1392,8 +1392,8 @@ struct ChannelNumber : STAttribute<ChannelNumber>
     }
 }
 
-/// The ICE-CONTROLLING attribute is present in a Binding request.  The
-/// attribute indicates that the client believes it is currently in the
+/// @brief The ICE-CONTROLLING attribute is present in a Binding request.
+/// The attribute indicates that the client believes it is currently in the
 /// controlling role.  The content of the attribute is a 64-bit unsigned
 /// integer in network byte order, which contains a random number.  As
 /// for the ICE-CONTROLLED attribute, the number is used for solving role

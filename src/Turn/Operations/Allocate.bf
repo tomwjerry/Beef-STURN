@@ -18,20 +18,24 @@ class TOAllocate
             message.appendAttr<Realm>(Realm(req.service.realm));
             if (message.flush(null) case .Err(let terr))
             {
+                req.Dispose();
                 return .Err(terr);
             }
         }
 
+        Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
+
         return .Ok(Response()
         {
             method = ResponseMethod.Stun(.ALLOCATE_ERROR),
-            bytes = req.bytes,
+            bytes = bytes,
             endpoint = null,
             relay = null
         });
     }
 
-    /// return allocate ok response
+    /// @breif return allocate ok response
     ///
     /// NOTE: The use of randomized port assignments to avoid certain
     /// types of attacks is described in [RFC6056].  It is RECOMMENDED
@@ -65,20 +69,24 @@ class TOAllocate
             message.appendAttr<Software>(Software(req.service.software));
             if (message.flush(Digest(integrity)) case .Err(let terr))
             {
+                req.Dispose();
                 return .Err(terr);
             }
         }
 
+        Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
+
         return Response()
         {
             method = ResponseMethod.Stun(.ALLOCATE_RESPONSE),
-            bytes = req.bytes,
+            bytes = bytes,
             endpoint = null,
             relay = null
         };
     }
 
-    /// process allocate request
+    /// @brief process allocate request
     ///
     /// [rfc8489](https://tools.ietf.org/html/rfc8489)
     ///

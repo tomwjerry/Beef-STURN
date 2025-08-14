@@ -16,14 +16,18 @@ class ChannelBind
             message.appendAttr<Realm>(Realm(req.service.realm));
             if (message.flush(null) case .Err(let terr))
             {
+                req.Dispose();
                 return .Err(terr);
             }
         }
 
+        Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
+
         return Response()
         {
             method = ResponseMethod.Stun(.CHANNEL_BIND_ERROR),
-            bytes = req.bytes,
+            bytes = bytes,
             endpoint = null,
             relay = null
         };
@@ -37,20 +41,24 @@ class ChannelBind
             MessageEncoder.extend(.CHANNEL_BIND_RESPONSE, req.message, req.bytes, message);
             if (message.flush(Digest(integrity)) case .Err(let err))
             {
+                req.Dispose();
                 return .Err(err);
             }
         }
 
+        Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
+
         return Response()
         {
             method = ResponseMethod.Stun(.CHANNEL_BIND_RESPONSE),
-            bytes = req.bytes,
+            bytes = bytes,
             endpoint = null,
             relay = null
         };
     }
 
-    /// process channel binding request
+    /// @brief process channel binding request
     ///
     /// The server MAY impose restrictions on the IP address and port values
     /// allowed in the XOR-PEER-ADDRESS attribute; if a value is not allowed,

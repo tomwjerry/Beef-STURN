@@ -3,7 +3,7 @@ namespace BeefSturn.Turn.Operations;
 using System;
 using BeefSturn.Stun;
 
-/// process binding request
+/// @brief process binding request
 ///
 /// [rfc8489](https://tools.ietf.org/html/rfc8489)
 ///
@@ -37,13 +37,17 @@ class Binding
         message.appendAttr<Software>(Software(req.service.software));
         if (message.flush(null) case .Err(let err))
         {
+            req.Dispose();
             return .Err(err);
         }
+
+        Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
     
         return Response()
         {
             method = ResponseMethod.Stun(.BINDING_RESPONSE),
-            bytes = req.bytes,
+            bytes = bytes,
             endpoint = null,
             relay = null
         };

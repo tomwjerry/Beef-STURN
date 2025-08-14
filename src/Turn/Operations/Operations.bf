@@ -366,7 +366,7 @@ struct Operationer : IDisposable
                         Request(this.address, bytes, service, channel));
 
                 case .Message(let message):
-                    let method = message.method();
+                    Method.StunMethod method = message.method();
                     Request req = Request(
                         this.address,
                         bytes,

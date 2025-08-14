@@ -111,7 +111,7 @@ class Observer
         }
     }
 
-    /// channel binding request
+    /// @brief channel binding request
     ///
     /// The server MAY impose restrictions on the IP address and port values
     /// allowed in the XOR-PEER-ADDRESS attribute; if a value is not allowed,
@@ -159,7 +159,7 @@ class Observer
         name) { channel = channel });
     }
 
-    /// create permission request
+    /// @brief create permission request
     ///
     /// [rfc8489](https://tools.ietf.org/html/rfc8489)
     ///

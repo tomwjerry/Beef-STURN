@@ -7,7 +7,7 @@ using Beef_Net;
 
 class Indication
 {
-    /// process send indication request
+    /// @brief process send indication request
     ///
     /// When the server receives a Send indication, it processes as per
     /// [Section 5](https://tools.ietf.org/html/rfc8656#section-5) plus
@@ -86,6 +86,7 @@ class Indication
 
             if (message.flush(null) case .Err(let terr))
             {
+                req.Dispose();
                 return .Err(terr);
             }
         }
@@ -94,13 +95,16 @@ class Indication
         {
             relay = null;
         }
+
+        Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
     
         return Response()
         {
             method = ResponseMethod.Stun(.DATA_INDICATION),
             endpoint = relay.HasValue ? relay.Value.endpoint : null,
             relay = relay.HasValue ? relay.Value.address : null,
-            bytes = req.bytes
+            bytes = bytes
         };
     }
 }

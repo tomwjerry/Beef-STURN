@@ -3,7 +3,7 @@ namespace BeefSturn.Turn.Operations;
 using System;
 using BeefSturn.Stun;
 
-/// process channel data
+/// @brief process channel data
 ///
 /// If the ChannelData message is received on a channel that is not bound
 /// to any peer, then the message is silently discarded.
@@ -50,7 +50,8 @@ class TOChannelData
         }
 
         resp.method = ResponseMethod.ChannelData;
-        resp.bytes = bytes;
+        resp.bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
 
         return resp;
     }

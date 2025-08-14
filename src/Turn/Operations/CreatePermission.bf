@@ -17,14 +17,18 @@ class CreatePermission
             message.appendAttr<Realm>(Realm(req.service.realm));
             if (message.flush(null) case .Err(let terr))
             {
+                req.Dispose();
                 return .Err(terr);
             }
         }
 
+        Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
+
         return Response()
         {
             method = ResponseMethod.Stun(.CREATE_PERMISSION_ERROR),
-            bytes = req.bytes
+            bytes = bytes
         };
     }
 
@@ -37,18 +41,22 @@ class CreatePermission
             message.appendAttr<Software>(Software(req.service.software));
             if (message.flush(null) case .Err(let terr))
             {
+                req.Dispose();
                 return .Err(terr);
             }
         }
 
+        Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
+        req.Dispose();
+
         return Response()
         {
             method = ResponseMethod.Stun(.CREATE_PERMISSION_RESPONSE),
-            bytes = req.bytes
+            bytes = bytes
         };
     }
 
-    /// process create permission request
+    /// @brief process create permission request
     ///
     /// [rfc8489](https://tools.ietf.org/html/rfc8489)
     ///
