@@ -237,6 +237,8 @@ struct Operationer : IDisposable
     public void Dispose()
     {
         delete bytes;
+        service.Dispose();
+        decoder.Dispose();
     }
 
     /// process udp data

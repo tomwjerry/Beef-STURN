@@ -42,7 +42,7 @@ struct Allocate : IDisposable
 /// A user can have many sessions.
 ///
 /// The default survival time for a session is 600 seconds.
-struct TurnSession : IDisposable
+class TurnSession
 {
     public TurnAuth auth;
     public Allocate allocate;
@@ -51,13 +51,13 @@ struct TurnSession : IDisposable
 
     public this()
     {
-        this = default;
         permissions = new List<uint16>(16);
     }
 
-    public void Dispose()
+    public ~this()
     {
         delete permissions;
+        allocate.Dispose();
     }
 }
 
@@ -164,6 +164,7 @@ class State
 
     public this()
     {
+        port_allocate_pool = new PortAllocatePools();
         sessions = new Dictionary<SessionAddr, TurnSession>((int32)PortAllocatePools.capacity());
         port_mapping_table = new Dictionary<uint16, SessionAddr>((int32)PortAllocatePools.capacity());
         address_nonce_table = new Dictionary<SessionAddr, (StringView, uint64)>((int32)PortAllocatePools.capacity());
@@ -210,12 +211,13 @@ class State
 
     public ~this()
     {
-        delete sessions;
+        DeleteDictionaryAndValues!(sessions);
         delete port_mapping_table;
         delete address_nonce_table;
         delete port_mapping_table;
         DeleteDictionaryAndValues!(port_relay_table);
         DeleteDictionaryAndValues!(channel_relay_table);
+        delete port_allocate_pool;
 
         delete sessionWrite;
         delete papAccess;
@@ -243,8 +245,7 @@ class State
 
     public PortAllocatePools getPortAllocatePool()
     {
-        PortAllocatePools pool = port_allocate_pool;
-        return pool;
+        return port_allocate_pool;
     }
 
     public Result<SessionAddr> getPortMapping(uint16 key)
@@ -542,7 +543,7 @@ class Sessions
         // Record a new session.
         {
             state.sessionWrite.Write();
-            state.setSession(addr, TurnSession()
+            state.setSession(addr, new TurnSession()
             {
                 expires = timer.get() + 600,
                 auth = TurnAuth()
@@ -830,7 +831,7 @@ enum Bit
 /// address may be known by an attacker, the ephemeral port of the client
 /// is usually unknown and must be guessed.
 ///
-struct PortAllocatePools : IDisposable
+class PortAllocatePools
 {
     public List<uint64> buckets;
     public uint64 allocated;
@@ -840,7 +841,6 @@ struct PortAllocatePools : IDisposable
 
     public this()
     {
-        this = default;
         buckets = new List<uint64>(bucket_size());
         peak = bucket_size() - 1;
         bit_len = bit_len();
@@ -848,7 +848,7 @@ struct PortAllocatePools : IDisposable
         rnd = new Random();
     }
 
-    public void Dispose()
+    public ~this()
     {
         delete buckets;
         delete rnd;
