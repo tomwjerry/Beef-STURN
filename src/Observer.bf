@@ -47,13 +47,13 @@ class Observer
     public StringView get_password(StringView username)
     {
         // Match the static authentication information first.
-        if (config.auth.static_credentials.GetValue(username) case .Ok(let  pwd))
+        if (config.static_credentials.GetValue(username) case .Ok(let  pwd))
         {
             return pwd;
         }
 
         // Try again to match the static authentication key.
-        if (!config.auth.static_auth_secret.IsEmpty)
+        if (!config.static_auth_secret.IsEmpty)
         {
             // Because (TURN REST api) this RFC does not mandate the format of the username,
             // only suggested values. In principle, the RFC also indicates that the
@@ -62,7 +62,7 @@ class Observer
             // itself.
             //
             // https://datatracker.ietf.org/doc/html/draft-uberti-behave-turn-rest-00#section-2.2
-            if (Stun.hmac_sha1(config.auth.static_auth_secret.ToRawData(),
+            if (Stun.hmac_sha1(config.static_auth_secret.ToRawData(),
                 Span<Span<uint8>>(new Span<uint8>[](username.ToRawData()))) case .Ok(let thmac))
             {
                 String b64 = scope String();
@@ -74,7 +74,7 @@ class Observer
         return null;
     }
 
-    /// allocate request
+    /// @brief allocate request
     ///
     /// [rfc8489](https://tools.ietf.org/html/rfc8489)
     ///
@@ -217,7 +217,7 @@ class Observer
         name) { port = ports });
     }
 
-    /// refresh request
+    /// @brief refresh request
     ///
     /// If the server receives a Refresh Request with a REQUESTED-ADDRESS-
     /// FAMILY attribute and the attribute value does not match the address

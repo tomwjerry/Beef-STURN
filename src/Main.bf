@@ -3,31 +3,13 @@ namespace BeefSturn;
 using System;
 using System.Collections;
 using BeefSturn.Turn;
+using Beef_Net;
 
 class BeefSturn
 {
     private List<Server> runners;
     private ServerStartOptions options;
 
-    public Result<void> StartServer(Config config)
-    {
-        Statistics statistics = scope Statistics();
-        Service lservice = scope Service(
-            "beefsturn",
-            config.turn.realm,
-            config.turn.get_externals(),
-            scope Observer(config, statistics)
-        );
-
-        StartServer(config, statistics, lservice);
-
-        // The turn server is non-blocking after it runs and needs to be kept from
-        // exiting immediately if the api server is not enabled.
-
-        return .Ok;
-    }
-
-    
     /// start turn server.
     ///
     /// create a specified number of threads,
@@ -36,12 +18,8 @@ class BeefSturn
     {
         runners = new List<Server>();
 
-        for (let intobj in config.turn.interfaces)
+        for (let intobj in config.interfaces)
         {
-            //transport,
-            //external,
-            //bind,
-        
             options = ServerStartOptions()
             {
                 statistics = statistics,
@@ -77,15 +55,78 @@ class BeefSturn
     }
 }
 
+// This class is not meant to run directly, rather copy
+// this class and modify as needed!
 static class Main
 {
-    static void Main(String[] args)
+    static void Main(String[] cfgarg)
     {
         Config config = scope Config();
-        config.load(args);
+
+        // If you want to load config from file, perhaps best way is to make a function that loads the file
+        // then set the config variables
+
+        // Command line arguments have a high priority and override configuration file
+        // options; here they are used to replace the configuration parsed out of the
+        // configuration file.
+        for (int i = 0; i < cfgarg.Count; i++)
+        {
+            if (cfgarg[i] == "--auth-static-credentials")
+            {
+                i++;
+                var unamePwd = cfgarg[i].Split('=');
+                config.static_credentials.Add((unamePwd.GetNext(), unamePwd.GetNext()));
+            }
+            else if (cfgarg[i] == "--auth-static-auth-secret")
+            {
+                i++;
+                config.static_auth_secret = cfgarg[i];
+            }
+            else if (cfgarg[i] == "--log-level")
+            {
+                i++;
+                config.log = LogLevel.FromStr(cfgarg[i]);
+            }
+            else if (cfgarg[i] == "--turn-realm")
+            {
+                i++;
+                config.realm = cfgarg[i];
+            }
+            else if (cfgarg[i] == "--turn-interfaces")
+            {
+                i++;
+                config.interfaces.Add(CfgInterface.FromStr(cfgarg[i]));
+            }
+        }
+
+        // Add some interfaces if there is none, really should modify this section!
+        if (config.interfaces.Count < 1)
+        {
+            config.interfaces.Add(CfgInterface()
+            {
+                bind = (3000, "0.0.0.0"),
+                transport = .UDP
+            });
+            Common.FillAddressInfo(ref config.interfaces[0].external, AF_INET, "127.0.0.1", 3000);
+            config.interfaces.Add(CfgInterface()
+            {
+                bind = (3000, "0.0.0.0"),
+                transport = .TCP
+            });
+            Common.FillAddressInfo(ref config.interfaces[1].external, AF_INET, "127.0.0.1", 3000);
+        }
+
         BeefSturn bsturn = scope BeefSturn();
+
+        Statistics statistics = scope Statistics();
+        Service lservice = scope Service(
+            "beefsturn",
+            config.realm,
+            config.get_externals(),
+            scope Observer(config, statistics)
+        );
     
-        bsturn.StartServer(config);
+        bsturn.StartServer(config, statistics, lservice);
 
         String buf = scope String();
         while (buf != "q")

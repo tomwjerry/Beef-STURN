@@ -71,6 +71,8 @@ class SturnUDP : Server
 
         recvThread = new Thread(new => recvThreadFun);
         sendThread = new Thread(new => sendThreadFun);
+        recvThread.Start();
+        sendThread.Start();
 
         Log.Info(
             "turn server listening: bind={}, external={}, transport=UDP",
@@ -345,6 +347,7 @@ class SturnTCP : Server
         running = true;
 
         listenerThreadObj = new Thread(new => listenerThread);
+        listenerThreadObj.Start();
 
         Log.Info(
             "turn server listening: bind={}, external={}, transport=TCP",
@@ -384,6 +387,7 @@ class SturnTCP : Server
             operationer = new Operationer(service.get_serviceContext(aSocket.PeerAddress, external)),
             running = true
         });
+        socketThreads[socketThreads.Count - 1].thread.Start();
 
         socketThreads.Add(SocketThread()
         {
@@ -393,6 +397,7 @@ class SturnTCP : Server
             operationer = new Operationer(service.get_serviceContext(aSocket.PeerAddress, external)),
             running = true
         });
+        socketThreads[socketThreads.Count - 1].thread.Start();
     }
 
     private void messageHandlerThread(int sockThreadIdx)

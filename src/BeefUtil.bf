@@ -98,10 +98,6 @@ class ByteList : List<uint8>
 
 class Log
 {
-    /// log level
-    ///
-    /// An enum representing the available verbosity levels of the logger.
-
     public static void Info(StringView msg, params Object[] msgParams)
     {
         Console.WriteLine(msg, msgParams);
