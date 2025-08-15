@@ -16,6 +16,7 @@ class BeefSturn
     /// each thread processes udp data separately.
     public Result<void> StartServer(Config config, Statistics statistics, Service lservice)
     {
+        Beef_Net_Init();
         runners = new List<Server>();
 
         for (let intobj in config.interfaces)

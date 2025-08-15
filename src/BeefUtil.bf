@@ -100,11 +100,11 @@ class Log
 {
     public static void Info(StringView msg, params Object[] msgParams)
     {
-        Console.WriteLine(msg, msgParams);
+        Console.WriteLine(msg, params msgParams);
     }
 
     public static void Error(StringView msg, params Object[] msgParams)
     {
-        Console.WriteLine(msg, msgParams);
+        Console.WriteLine(msg, params msgParams);
     }
 }
