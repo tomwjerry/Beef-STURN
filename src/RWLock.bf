@@ -44,9 +44,12 @@ class RWLock
 
     public ~this()
     {
+        quit = true;
         reads = 0;
         write = false;
-        quit = true;
+        
+        Thread.Sleep(100);
+        
         delete mon;
     }
 

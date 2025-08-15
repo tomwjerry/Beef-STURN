@@ -225,7 +225,8 @@ class Operationer
 
     public this(ServiceContext service)
     {
-        this.address = SessionAddr() {
+        this.address = SessionAddr()
+        {
             address = SocketAddress()
             {
                 Family = AF_INET,
@@ -244,7 +245,7 @@ class Operationer
         bytes = new ByteList();
         bytes.EnsureCapacity(4096, true);
         
-        this.service = service;
+        this.service = new ServiceContext(service);
     }
 
     public this(Operationer copyop)
@@ -253,7 +254,7 @@ class Operationer
         bytes = new ByteList();
         bytes.EnsureCapacity(4096, true);
         bytes.Set(copyop.bytes);
-        service = copyop.service;
+        service = new ServiceContext(copyop.service);
         decoder = copyop.decoder;
     }
 

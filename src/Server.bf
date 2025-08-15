@@ -39,7 +39,6 @@ class SturnUDP : Server
     bool running;
 
     Router router;
-    StatisticsReporter reporter;
     Operationer operationer;
     SessionAddr session_addr;
     SocketAddress external;
@@ -56,7 +55,6 @@ class SturnUDP : Server
         socket.Listen(options.bind.0, options.bind.1);
 
         router = new Router(options.router);
-        reporter = options.statistics.get_reporter(Transport.UDP);
         ServiceContext sc = scope ServiceContext();
         options.service.get_serviceContext(options.external, options.external, sc);
         operationer = new Operationer(sc);
@@ -88,6 +86,7 @@ class SturnUDP : Server
     private void recvThreadFun()
     {
         uint8[2048] buf = uint8[2048](0,);
+        StatisticsReporter reporter = scope StatisticsReporter(statistics.statsDict.GetEnumerator(), Transport.UDP);
 
         while (running)
         {
@@ -159,8 +158,10 @@ class SturnUDP : Server
             sainterface = external
         };
 
-        StatisticsReporter reporter = statistics.get_reporter(Transport.UDP);
-        Receiver receiver = router.get_receiver(external);
+        StatisticsReporter reporter = scope StatisticsReporter(statistics.statsDict.GetEnumerator(), Transport.UDP);
+        Receiver receiver = router.get_receiver(external, socket.Iterator);
+        String locadd = scope String();
+        receiver.sock.GetLocalAddress(locadd);
         uint8[2048] buf = uint8[2048](0,);
         while (running)
         {
@@ -187,7 +188,7 @@ class SturnUDP : Server
 
         router.remove(external);
 
-        Log.Error("udp server close: interface={}", receiver.sock.LocalAddress);
+        Log.Error("udp server close: interface={}", locadd);
     }
 
     public ~this()
@@ -201,7 +202,6 @@ class SturnUDP : Server
         //delete sendThread;
 
         delete router;
-        reporter.Dispose();
         delete operationer;
         delete statistics;
     }
@@ -338,7 +338,7 @@ class SturnTCP : Server
         socketThreads = new List<SocketThread>();
 
         router = new Router(options.router);
-        reporter = options.statistics.get_reporter(Transport.TCP);
+        reporter = new StatisticsReporter(options.statistics.statsDict.GetEnumerator(), Transport.TCP);
         external = options.external;
         service = new Service(options.service);
         service.sessions.Start();
@@ -602,7 +602,7 @@ class SturnTCP : Server
         delete listener;
 
         delete router;
-        reporter.Dispose();
+        delete reporter;
         delete statistics;
     }
 }

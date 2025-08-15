@@ -100,16 +100,6 @@ class Statistics
         delete statsDictLock;
     }
 
-    /// get signal sender
-    ///
-    /// The signal sender can notify the statisticsing instance to update
-    /// internal statistics.
-    public StatisticsReporter get_reporter(Transport transport)
-    {
-        StatisticsReporter statsRep = StatisticsReporter(statsDict.GetEnumerator(), transport);
-        return statsRep;
-    }
-
     /// Add an address to the watch list
     public void register(BeefSturn.Turn.SessionAddr addr)
     {
@@ -146,7 +136,7 @@ class Statistics
 /// It is held by each worker, and status information can be sent to the
 /// statisticsing instance through this instance to update the internal
 /// statistical information of the statistics.
-struct StatisticsReporter : IDisposable
+class StatisticsReporter
 {
     public Dictionary<BeefSturn.Turn.SessionAddr, Counts> table;
     public Transport transport;
@@ -167,7 +157,7 @@ struct StatisticsReporter : IDisposable
         tableLock = new RWLock();
     }
 
-    public void Dispose()
+    public ~this()
     {
         delete table;
         delete tableLock;

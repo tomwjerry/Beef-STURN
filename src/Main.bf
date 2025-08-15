@@ -107,12 +107,12 @@ static class Main
                 transport = .UDP
             });
             Common.FillAddressInfo(ref config.interfaces[0].external, AF_INET, "127.0.0.1", 3000);
-            config.interfaces.Add(CfgInterface()
+            /*config.interfaces.Add(CfgInterface()
             {
                 bind = (3000, "0.0.0.0"),
                 transport = .TCP
             });
-            Common.FillAddressInfo(ref config.interfaces[1].external, AF_INET, "127.0.0.1", 3000);
+            Common.FillAddressInfo(ref config.interfaces[1].external, AF_INET, "127.0.0.1", 3000);*/
         }
         
         BeefSturn bsturn = scope BeefSturn();
