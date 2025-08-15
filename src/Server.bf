@@ -194,6 +194,7 @@ class SturnUDP : Server
     public ~this()
     {
         running = false;
+        sendThread.Join();
 
         socket.Disconnect();
         

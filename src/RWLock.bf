@@ -33,6 +33,7 @@ class RWLock
     private bool write;
     private bool quit;
     private Monitor mon;
+    private uint32 shutdowns;
 
     public this()
     {
@@ -48,17 +49,25 @@ class RWLock
         reads = 0;
         write = false;
         
-        Thread.Sleep(100);
+        while (shutdowns > 0) {}
         
         delete mon;
     }
 
     public LockIns Read()
     {
+        Interlocked.Increment(ref shutdowns);
         LockIns curIns = LockIns(this, false);
         while (write && !quit)
         {
             Thread.Sleep(10);
+        }
+
+        Interlocked.Decrement(ref shutdowns);
+
+        if (quit)
+        {
+            return curIns;
         }
 
         Interlocked.Increment(ref reads);
@@ -67,19 +76,29 @@ class RWLock
 
     public LockIns Write()
     {
+        Interlocked.Increment(ref shutdowns);
+
         LockIns curIns = LockIns(this, true);
+
         while (!quit && (reads > 0 || write))
         {
             Interlocked.Fence();
             Thread.Sleep(9);
         }
 
-        mon.Enter();
-        if (!Interlocked.CompareExchange(ref write, false, true) && !quit)
+        Interlocked.Decrement(ref shutdowns);
+
+        if (quit)
         {
-            mon.Exit();
+            return curIns;
+        }
+        
+        if (Interlocked.CompareExchange(ref write, false, true) === true && !quit)
+        {
             return Write();
         }
+
+        mon.Enter();
         
         return curIns;
     }
@@ -91,7 +110,7 @@ class RWLock
 
     public void ExitWrite()
     {
-        write = true;
+        write = false;
         mon.Exit();
     }
 }
