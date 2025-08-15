@@ -37,12 +37,10 @@ class Binding
         message.appendAttr<Software>(Software(req.service.software));
         if (message.flush(null) case .Err(let err))
         {
-            req.Dispose();
             return .Err(err);
         }
 
         Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
-        req.Dispose();
     
         return Response()
         {

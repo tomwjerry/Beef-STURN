@@ -181,10 +181,10 @@ class State
 
     public this(State copyst)
     {
+        port_allocate_pool = new PortAllocatePools(copyst.port_allocate_pool);
         sessions = new Dictionary<SessionAddr, TurnSession>(copyst.sessions.GetEnumerator());
         port_mapping_table = new Dictionary<uint16, SessionAddr>(copyst.port_mapping_table.GetEnumerator());
         address_nonce_table = new Dictionary<SessionAddr, (StringView, uint64)>(copyst.address_nonce_table.GetEnumerator());
-        port_mapping_table = new Dictionary<uint16, SessionAddr>(copyst.port_mapping_table.GetEnumerator());
         port_relay_table = new Dictionary<SessionAddr, Dictionary<uint16, Endpoint>>((int32)PortAllocatePools.capacity());
         channel_relay_table = new Dictionary<SessionAddr, Dictionary<uint16, Endpoint>>((int32)PortAllocatePools.capacity());
 
@@ -197,8 +197,6 @@ class State
         {
             channel_relay_table.Add(cr.key, new Dictionary<uint16, Endpoint>(cr.value.GetEnumerator()));
         }
-
-        port_allocate_pool = copyst.port_allocate_pool;
 
         sessionWrite = new RWLock();
         papAccess = new Monitor();
@@ -364,9 +362,13 @@ class Sessions
     public Random rnd;
     public Thread bgThread;
 
-    public this(Sessions copysess) : this(copysess.observer)
+    public this(Sessions copysess)
     {
         this.state = new State(copysess.state);
+        timer = new STTimer();
+        this.observer = new Observer(copysess.observer);
+        running = true;
+        rnd = new Random();
     }
 
     public this(Observer observer)
@@ -376,7 +378,10 @@ class Sessions
         this.observer = new Observer(observer);
         running = true;
         rnd = new Random();
+    }
 
+    public void Start()
+    {
         // This is a background thread that silently handles expiring sessions and
         // cleans up session information when it expires.
         bgThread = new Thread(new() =>
@@ -438,7 +443,11 @@ class Sessions
     public ~this()
     {
         running = false;
-        bgThread.Join();
+        if (bgThread != null)
+        {
+            bgThread.Join();
+        }
+        
         delete observer;
         delete state;
         delete rnd;
@@ -844,6 +853,14 @@ class PortAllocatePools
         bit_len = bit_len();
         allocated = 0;
         rnd = new Random();
+    }
+
+    public this(PortAllocatePools cpypool) : this()
+    {
+        buckets.Set(cpypool.buckets);
+        peak = cpypool.peak;
+        bit_len = cpypool.bit_len;
+        allocated = cpypool.allocated;
     }
 
     public ~this()

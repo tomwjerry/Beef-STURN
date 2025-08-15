@@ -86,7 +86,6 @@ class Indication
 
             if (message.flush(null) case .Err(let terr))
             {
-                req.Dispose();
                 return .Err(terr);
             }
         }
@@ -97,7 +96,6 @@ class Indication
         }
 
         Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
-        req.Dispose();
     
         return Response()
         {

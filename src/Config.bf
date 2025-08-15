@@ -135,7 +135,7 @@ class Config
 
     public this()
     {
-        realm = "localhost";
+        realm = StringView("localhost");
         interfaces = new List<CfgInterface>();
         log = .Info;
         static_credentials = new Dictionary<StringView, StringView>();

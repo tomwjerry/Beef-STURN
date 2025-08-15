@@ -16,13 +16,11 @@ class Refresh
             message.appendAttr<ErrorCode>(ErrorCode(StunRespError.from(err)));
             if (message.flush(null) case .Err(let terr))
             {
-                req.Dispose();
                 return .Err(terr);
             }
         }
 
         Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
-        req.Dispose();
 
         return Response()
         {
@@ -40,13 +38,11 @@ class Refresh
             message.appendAttr<Lifetime>(Lifetime(lifetime));
             if (message.flush(Digest(integrity)) case .Err(let terr))
             {
-                req.Dispose();
                 return .Err(terr);
             }
         }
 
         Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
-        req.Dispose();
 
         return Response()
         {

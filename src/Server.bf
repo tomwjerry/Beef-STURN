@@ -10,7 +10,7 @@ using BeefSturn.Stun;
 using BeefSturn.Turn;
 using BeefSturn.Turn.Operations;
 
-struct ServerStartOptions : IDisposable
+class ServerStartOptions
 {
     public (uint16, StringView) bind;
     public SocketAddress external;
@@ -18,10 +18,10 @@ struct ServerStartOptions : IDisposable
     public Router router;
     public Statistics statistics;
 
-    public void Dispose()
+    public ~this()
     {
         delete service;
-        router.Dispose();
+        delete router;
         delete statistics;
     }
 }
@@ -55,11 +55,13 @@ class SturnUDP : Server
         socket = new UdpConnection();
         socket.Listen(options.bind.0, options.bind.1);
 
-        router = options.router;
+        router = new Router(options.router);
         reporter = options.statistics.get_reporter(Transport.UDP);
-        operationer = new Operationer(options.service.get_serviceContext(options.external, options.external));
+        ServiceContext sc = scope ServiceContext();
+        options.service.get_serviceContext(options.external, options.external, sc);
+        operationer = new Operationer(sc);
         external = options.external;
-        statistics = options.statistics;
+        statistics = new Statistics(options.statistics);
 
         session_addr = SessionAddr()
         {
@@ -93,7 +95,7 @@ class SturnUDP : Server
             // shut down, which is not processed yet, but a
             // warning will be issued.
             int32 recvCode = socket.Get(&buf, 2048);
-            if (recvCode < 0)
+            if (recvCode <= 0)
             {
                 continue;
             }
@@ -193,15 +195,12 @@ class SturnUDP : Server
         running = false;
 
         socket.Disconnect();
-
-        recvThread.Join();
-        sendThread.Join();
         
         delete socket;
         //delete recvThread;
         //delete sendThread;
 
-        router.Dispose();
+        delete router;
         reporter.Dispose();
         delete operationer;
         delete statistics;
@@ -338,11 +337,12 @@ class SturnTCP : Server
         listener.OnDisconnect = new => disconnectClient;
         socketThreads = new List<SocketThread>();
 
-        router = options.router;
+        router = new Router(options.router);
         reporter = options.statistics.get_reporter(Transport.TCP);
         external = options.external;
-        service = options.service;
-        statistics = options.statistics;
+        service = new Service(options.service);
+        service.sessions.Start();
+        statistics = new Statistics(options.statistics);
 
         running = true;
 
@@ -379,22 +379,26 @@ class SturnTCP : Server
         // as soon as possible.
         aSocket.SetBlocking(false);
 
+        ServiceContext handlerContext = scope ServiceContext();
+        service.get_serviceContext(aSocket.PeerAddress, external, handlerContext);
         socketThreads.Add(SocketThread()
         {
             thread = new Thread(new () => { messageHandlerThread(socketThreads.Count); }),
             mon = new Monitor(),
             receiver = router.get_receiver(aSocket.PeerAddress, aSocket),
-            operationer = new Operationer(service.get_serviceContext(aSocket.PeerAddress, external)),
+            operationer = new Operationer(handlerContext),
             running = true
         });
         socketThreads[socketThreads.Count - 1].thread.Start();
 
+        ServiceContext readerContext = scope ServiceContext();
+        service.get_serviceContext(aSocket.PeerAddress, external, readerContext);
         socketThreads.Add(SocketThread()
         {
             thread = new Thread(new () => { messageReaderThread(socketThreads.Count); }),
             mon = new Monitor(),
             receiver = router.get_receiver(aSocket.PeerAddress, aSocket),
-            operationer = new Operationer(service.get_serviceContext(aSocket.PeerAddress, external)),
+            operationer = new Operationer(readerContext),
             running = true
         });
         socketThreads[socketThreads.Count - 1].thread.Start();
@@ -597,7 +601,7 @@ class SturnTCP : Server
 
         delete listener;
 
-        router.Dispose();
+        delete router;
         reporter.Dispose();
         delete statistics;
     }

@@ -51,7 +51,6 @@ class TOChannelData
 
         resp.method = ResponseMethod.ChannelData;
         resp.bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
-        req.Dispose();
 
         return resp;
     }

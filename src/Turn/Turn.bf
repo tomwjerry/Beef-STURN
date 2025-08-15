@@ -23,8 +23,8 @@ class Service
     /// Create turn service.
     public this(StringView software, StringView realm, Span<SocketAddress> interfaces, Observer observer)
     {
-        this.software = software;
-        this.realm = realm;
+        this.software = StringView(software);
+        this.realm = StringView(realm);
         this.interfaces = new List<SocketAddress>(interfaces);
         this.observer = new Observer(observer);
         this.sessions = new Sessions(observer);
@@ -32,8 +32,8 @@ class Service
 
     public this(Service copyser)
     {
-        this.software = copyser.software;
-        this.realm = copyser.realm;
+        this.software = StringView(copyser.software);
+        this.realm = StringView(copyser.realm);
         this.interfaces = new List<SocketAddress>(copyser.interfaces);
         this.observer = new Observer(copyser.observer);
         this.sessions = new Sessions(copyser.sessions);
@@ -52,14 +52,16 @@ class Service
     }
 
     /// Get operationer.
-    public ServiceContext get_serviceContext(SocketAddress endpoint, SocketAddress sainterface)
+    public void get_serviceContext(SocketAddress endpoint, SocketAddress sainterface, ServiceContext sc)
     {
-        ServiceContext sc = ServiceContext(interfaces, observer, sessions);
-        sc.software = software;
-        sc.realm = realm;
+        sc.interfaces.Set(interfaces);
+        delete sc.observer;
+        delete sc.sessions;
+        sc.observer = new Observer(observer);
+        sc.sessions = new Sessions(sessions);
+        sc.software = StringView(software);
+        sc.realm = StringView(realm);
         sc.sainterface = sainterface;
         sc.endpoint = endpoint;
-
-        return sc;
     }
 }

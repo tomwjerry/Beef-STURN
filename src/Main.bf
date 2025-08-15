@@ -8,7 +8,6 @@ using Beef_Net;
 class BeefSturn
 {
     private List<Server> runners;
-    private ServerStartOptions options;
 
     /// start turn server.
     ///
@@ -21,11 +20,11 @@ class BeefSturn
 
         for (let intobj in config.interfaces)
         {
-            options = ServerStartOptions()
+            ServerStartOptions options = scope ServerStartOptions()
             {
-                statistics = statistics,
+                statistics = new Statistics(statistics),
                 service = new Service(lservice),
-                router = Router(),
+                router = new Router(),
                 external = intobj.external,
                 bind = intobj.bind
             };
@@ -50,7 +49,6 @@ class BeefSturn
     public Result<void> StopServer()
     {
         DeleteContainerAndItems!(runners);
-        options.Dispose();
 
         return .Ok;
     }
@@ -116,18 +114,20 @@ static class Main
             });
             Common.FillAddressInfo(ref config.interfaces[1].external, AF_INET, "127.0.0.1", 3000);
         }
-
+        
         BeefSturn bsturn = scope BeefSturn();
 
-        Statistics statistics = scope Statistics();
-        Service lservice = scope Service(
-            "beefsturn",
-            config.realm,
-            config.get_externals(),
-            scope Observer(config, statistics)
-        );
-    
-        bsturn.StartServer(config, statistics, lservice);
+        {
+            Statistics statistics = scope Statistics();
+            Service lservice = scope Service(
+                StringView("beefsturn"),
+                StringView(config.realm),
+                config.get_externals(),
+                scope Observer(config, statistics)
+            );
+        
+            bsturn.StartServer(config, statistics, lservice);
+        }
 
         String buf = scope String();
         while (buf != "q")

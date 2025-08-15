@@ -17,13 +17,11 @@ class CreatePermission
             message.appendAttr<Realm>(Realm(req.service.realm));
             if (message.flush(null) case .Err(let terr))
             {
-                req.Dispose();
                 return .Err(terr);
             }
         }
 
         Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
-        req.Dispose();
 
         return Response()
         {
@@ -41,13 +39,11 @@ class CreatePermission
             message.appendAttr<Software>(Software(req.service.software));
             if (message.flush(null) case .Err(let terr))
             {
-                req.Dispose();
                 return .Err(terr);
             }
         }
 
         Span<uint8> bytes = Span<uint8>(req.bytes.Ptr, req.bytes.Count);
-        req.Dispose();
 
         return Response()
         {

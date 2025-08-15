@@ -16,7 +16,7 @@ enum ResponseMethod
 ///
 /// A service corresponds to a Net Endpoint, different sockets have different
 /// addresses and so on, but other things are basically the same.
-struct ServiceContext : IDisposable
+class ServiceContext
 {
     public StringView realm;
     public StringView software;
@@ -28,7 +28,8 @@ struct ServiceContext : IDisposable
 
     public this()
     {
-        this = default;
+        realm = StringView();
+        software = StringView();
         interfaces = new List<SocketAddress>();
         observer = new Observer(scope Config(), scope Statistics());
         sessions = new Sessions(observer);
@@ -36,13 +37,25 @@ struct ServiceContext : IDisposable
 
     public this(Span<SocketAddress> interfaces, Observer observer, Sessions sessions)
     {
-        this = default;
+        realm = StringView();
+        software = StringView();
         this.interfaces = new List<SocketAddress>(interfaces);
         this.observer = new Observer(observer);
         this.sessions = new Sessions(sessions);
     }
 
-    public void Dispose()
+    public this (ServiceContext sccpy)
+    {
+        realm = StringView(sccpy.realm);
+        software = StringView(sccpy.software);
+        endpoint = sccpy.endpoint;
+        sainterface = sccpy.sainterface;
+        this.interfaces = new List<SocketAddress>(sccpy.interfaces);
+        this.observer = new Observer(sccpy.observer);
+        this.sessions = new Sessions(sccpy.sessions);
+    }
+
+    public ~this()
     {
         delete interfaces;
         delete observer;
@@ -51,7 +64,7 @@ struct ServiceContext : IDisposable
 }
 
 /// The request of the service.
-struct Request : IDisposable
+class Request
 {
     public SessionAddr address;
     public ByteList bytes;
@@ -61,8 +74,8 @@ struct Request : IDisposable
 
     public this()
     {
-        this = default;
         bytes = new ByteList();
+        service = new ServiceContext();
     }
 
     public this(SessionAddr addr, Span<uint8> btlist, ServiceContext sc, MessageRef msg)
@@ -70,7 +83,7 @@ struct Request : IDisposable
         address = addr;
         bytes = new ByteList();
         bytes.Set(btlist);
-        service = sc;
+        service = new ServiceContext(sc);
         message = msg;
         chanData = ChannelData();
     }
@@ -85,11 +98,11 @@ struct Request : IDisposable
         chanData = chanDt;
     }
 
-    public void Dispose()
+    public ~this()
     {
         delete bytes;
         message.Dispose();
-        service.Dispose();
+        delete service;
     }
 
     public bool verify_ip(SocketAddress address)
@@ -247,11 +260,11 @@ class Operationer
     public ~this()
     {
         delete bytes;
-        service.Dispose();
+        delete service;
         decoder.Dispose();
     }
 
-    /// process udp data
+    /// @breif process udp data
     ///
     /// receive STUN encoded Bytes,
     /// and return any Bytes that can be responded to and the target address.
@@ -375,11 +388,11 @@ class Operationer
                 case .ChannelData(let channel):
                     return TOChannelData.process(
                         bytes,
-                        Request(this.address, bytes, service, channel));
+                        scope Request(this.address, bytes, service, channel));
 
                 case .Message(let message):
                     Method.StunMethod method = message.method();
-                    Request req = Request(
+                    Request req = scope Request(
                         this.address,
                         bytes,
                         service,

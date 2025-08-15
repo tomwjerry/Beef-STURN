@@ -14,7 +14,7 @@ struct Receiver
 }
 
 /// Handles packet forwarding between transport protocols.
-struct Router : IDisposable
+class Router
 {
     Dictionary<SocketAddress, Receiver> socketRecv;
     RWLock routerLock;
@@ -25,7 +25,15 @@ struct Router : IDisposable
         routerLock = new RWLock();
     }
 
-    public void Dispose()
+    public this(Router copyRoute) : this()
+    {
+        for (let socks in copyRoute.socketRecv)
+        {
+            socketRecv.Add(socks.key, socks.value);
+        }    
+    }
+
+    public ~this()
     {
         delete routerLock;
         delete socketRecv;
